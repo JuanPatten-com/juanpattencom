@@ -2,6 +2,7 @@
 <html>
   <head>
     <meta charset="utf-8">
+    <meta name="viewport" content="width=device-width">
     <meta name="theme-color" content="rgb(255 255 255)" media="(prefers-color-scheme: light)">
     <meta name="theme-color" content="rgb(30 30 33)" media="(prefers-color-scheme: dark)">
 
@@ -20,11 +21,27 @@
         </aside>
       </div>
 
-      <div id=projects>
-        <h2>Projects</h2>
+      <section id=eg>
+        <h2>Everyday Games</h2>
+        <p>
+        I started Everyday Games in 2023 to explore creating a mobile
+        game that’s fun, tastefully designed, and ethically monetized.
+        </p>
+        <p>
+        Our first game is Tenet &mdash; a surprisingly deep puzzle game
+        built around a delightful drag &amp; drop core. It’s available
+        for early access on iOS.
+        </p>
+        <p>
+        <a class=raquo href="https://everyday.games/tenet">Learn More</a>
+        </p>
+      </section>
+
+      <section id=projects>
+        <h2>Side Projects</h2>
 
         <p class=dim>
-        Some tools I’ve cooked up to scratch various itches
+        Some tools I’ve made to scratch various itches
         </p>
 
         <div class=project id=proj-hoot>
@@ -39,7 +56,7 @@
           to generate HTML, instead of <a href="https://sass-lang.com">Sass</a> to generate CSS.
           </p>
           <p>
-          <a href="https://github.com/jrpat/hoot">Hoot</a>
+          By rough analogy &mdash; <a href="https://github.com/jrpat/hoot">Hoot</a>
           <span class=is-to>:</span> <a href="https://jim.tcl.tk/fossil/doc/trunk/Tcl_shipped.html">Tcl</a>
           <span class=as>::</span>
           <a href="https://docs.racket-lang.org/scribble/index.html">Scribble</a>
@@ -47,99 +64,101 @@
           <a href="https://racket-lang.org">Racket</a>
           </p>
         </div>
-      </div>
 
-      <div class=project>
-        <h3>
-          jsJot
-          <a href="https://jsjot.pages.dev">App</a>
-          <a href="https://github.com/jrpat/jsjot">Source</a>
-        </h3>
+        <div class=project>
+          <h3>
+            jsJot
+            <a href="https://jsjot.pages.dev">App</a>
+            <a href="https://github.com/jrpat/jsjot">Source</a>
+          </h3>
+          <p>
+          jsJot is a “calculator scratchpad” in the vein of
+          <a href="https://soulver.app">Soulver</a>,
+          <a href="https://numi.app">Numi</a>, or
+          <a href="http://calca.io">Calca</a>.
+          But instead of inventing its own language or syntax, it’s just
+          Javascript, with some creature comforts like auto-pairing
+          brackets and parens. The core code is
+          <a href="https://github.com/jrpat/jsjot/blob/556b1be1864739f9e82d40a908fd380912dfb885/jot.js#L25-L41">surprisingly simple</a>,
+          given how useful and convenient it is.
+          </p>
+        </div>
+
+        <div class=project>
+          <h3>
+            Brunicode
+            <a href="https://brunicode.com">App</a>
+            <a href="https://github.com/jrpat/bruni">Source</a>
+          </h3>
+          <p>
+          Brunicode is a wicked-fast unicode browser and searcher.
+          Think “wicked-fast” is an odd way to describe a tool that lists
+          glyphs in a grid? Try rendering the full unicode range at once
+          and watch your browser grind to a halt.
+          </p>
+        </div>
+
+        <div class=project>
+          <h3>
+            PDF BBQ
+            <a href="https://pdfbbq.com">App</a>
+            <a href="https://github.com/jrpat/pdfbbq">Source</a>
+          </h3>
+          <p>
+          PDF BBQ is a side-by-side playground for cooking up PDFs.
+          I’ve used it to &ndash; for instance &ndash; make custom dot-grid and music staff paper,
+          and to generate mazes to print out for my nephew. Powered by
+          <a href="https://pdf-lib.js.org">PDF-Lib</a>.
+          </p>
+        </div>
+
+        <div class=project>
+          <h3>
+            Jif
+            <a href="https://jif.pages.dev">App</a>
+            <a href="https://github.com/jrpat/jif">Source</a>
+          </h3>
+          <p>
+          An elegant text editor for writing prose, in the spirit of
+          <a href="https://ia.net/writer">iA Writer</a>, but with some
+          conveniences like auto-pairing quotes and parens, “triggers”
+          (like <tt>imap</tt> in vim), and configurable with a JavaScript-based
+          config system.
+          </p>
+        </div>
+
+        <div class=project>
+          <h3>
+            Zest
+            <a href="https://github.com/jrpat/zest">Source</a>
+          </h3>
+          <p>
+          A single-header, simple unit testing library for C++
+          </p>
+        </div>
+
+        <div class=project>
+          <h3>
+            Fest
+            <a href="https://github.com/jrpat/fest">Source</a>
+          </h3>
+          <p>
+          A single-header, simple unit testing library for C
+          </p>
+        </div>
+
+        <hr>
+
         <p>
-        jsJot is a “calculator scratchpad” in the vein of
-        <a href="https://soulver.app">Soulver</a>,
-        <a href="https://numi.app">Numi</a>, or
-        <a href="http://calca.io">Calca</a>.
-        But instead of inventing its own language or syntax, it’s just Javascript,
-        with some creature comforts like auto-pairing brackets and parens.
+        There are more projects on <a href="https://github.com/jrpat">my GitHub</a>.
         </p>
-      </div>
+      </section>
 
-      <div class=project>
-        <h3>
-          Brunicode
-          <a href="https://brunicode.com">App</a>
-          <a href="https://github.com/jrpat/bruni">Source</a>
-        </h3>
-        <p>
-        Brunicode is a wicked-fast unicode browser and searcher.
-        Think “wicked-fast” is an odd way to describe a tool that lists
-        glyphs in a grid? Try rendering the full unicode range at once
-        and watch your browser grind to a halt.
-        </p>
-      </div>
-
-      <div class=project>
-        <h3>
-          PDF BBQ
-          <a href="https://pdfbbq.com">App</a>
-          <a href="https://github.com/jrpat/pdfbbq">Source</a>
-        </h3>
-        <p>
-        PDF BBQ is a side-by-side playground for cooking up PDFs.
-        I’ve used it to &ndash; for instance &ndash; make custom dot-grid and music staff paper,
-        and to generate mazes to print out for my nephew. Powered by
-        <a href="https://pdf-lib.js.org">PDF-Lib</a>.
-        </p>
-      </div>
-
-      <div class=project>
-        <h3>
-          Jif
-          <a href="https://jif.pages.dev">App</a>
-          <a href="https://github.com/jrpat/jif">Source</a>
-        </h3>
-        <p>
-        An elegant text editor for writing prose, in the spirit of
-        <a href="https://ia.net/writer">iA Writer</a>, but with some
-        conveniences like auto-pairing quotes and parens, “triggers”
-        (like <tt>imap</tt> in vim), and configurable with a JavaScript-based
-        config system.
-        </p>
-      </div>
-
-      <div class=project>
-        <h3>
-          Zest
-          <a href="https://github.com/jrpat/zest">Source</a>
-        </h3>
-        <p>
-        A single-header, simple unit testing library for C++
-        </p>
-      </div>
-
-      <div class=project>
-        <h3>
-          Fest
-          <a href="https://github.com/jrpat/fest">Source</a>
-        </h3>
-        <p>
-        A single-header, simple unit testing library for C
-        </p>
-      </div>
-
-      <hr>
-
-      <p>
-      There are more projects on <a href="https://github.com/jrpat">my GitHub</a>.
-      </p>
-    </div>
-
-    <footer hbox=center>
-      <a href="https://github.com/jrpat">GitHub</a>
-      <a href="https://linkedin.com/in/juanpatten">LinkedIn</a>
-      <a href="/JuanPatten-CV-IC.pdf">Resumé</a>
-    </footer>
+      <footer hbox=center>
+        <a href="https://github.com/jrpat">GitHub</a>
+        <a href="https://linkedin.com/in/juanpatten">LinkedIn</a>
+        <a href="/JuanPatten-CV-IC.pdf">Resumé</a>
+      </footer>
   </body>
 </html>
 
