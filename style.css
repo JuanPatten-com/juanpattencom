@@ -98,16 +98,19 @@ h1 {
   font-size: var(--fs-3);
   font-weight: 600;
   line-height: 1.125;
+  margin-bottom: 0.375em;
 }
 h2 {
   font-size: var(--fs-2);
   font-weight: 500;
   line-height: 1.15625;
+  margin-bottom: 0.375em;
 }
 h3 {
   font-size: var(--fs-1);
   font-weight: 600;
   line-height: 1.1875;
+  margin-bottom: 0.375em;
 }
 
 a {
@@ -156,6 +159,7 @@ p {
   line-height: 1;
   padding-bottom: 0.25em;
   letter-spacing: -0.03125ch;
+  margin-bottom: 0;
 }
 
 #mast aside {
