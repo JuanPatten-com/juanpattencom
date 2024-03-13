@@ -1,0 +1,5 @@
+$[set ContentWidth 60ch]
+
+$[set Large "@media screen and (min-width: ${ContentWidth})"]
+$[set Small "@media screen and (max-width: ${ContentWidth})"]
+

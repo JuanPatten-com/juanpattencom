@@ -1,4 +1,6 @@
 #!/bin/bash
+# shellcheck disable=SC2120
+
 set -euo pipefail
 
 ########################################################################
@@ -6,7 +8,7 @@ set -euo pipefail
 # To add a command, add a function below and then add an entry for it
 # (optionally w/ a shortcut version) to the case statement at the end.
 #
-# For sanity's sake, be sure to run shellcheck on this file.
+# Be sure to run shellcheck on this file.
 #
 ########################################################################
 
@@ -19,28 +21,26 @@ OUT="${OUT:=_public}"
 
 ########################################################################
 
-src-dirs() { q src -mindepth 1 -type d ;}
-
+src-dirs()  { q src -mindepth 1 -type d "$@" ;}
 src-files() { q src -type f ! -name '_*' "$@" ;}
+src-blog()  { q src/blog -type f ! -name '_*' -name '*.md' "$@" ;}
 
 make-dir() { mkdir -p ".tmp/${1#src/}" ;}
 
 hoot() {
+  out=${1/.hoot/}
   PWD=src ./lib/hoot/hoot "${1#src/}" \
-    > ".tmp/${1#src/}"
+    > ".tmp/${out#src/}"
 }
 
-markdown() {
+blog-post() {
+  out=${1/.hoot.md/}
   PWD=src ./lib/hoot/hoot "${1#src/}" \
     | ./lib/lowdown/lowdown -thtml - \
-    > ".tmp/${1#src/}"
+    > ".tmp/${out#src/}.html"
 }
 
 ########################################################################
-
-cmd-dbg() {
-  src-files -name '*.md'
-}
 
 cmd-init() {
   git submodule update --init
@@ -55,7 +55,7 @@ cmd-build() {
 
   src-dirs | each make-dir
   src-files ! -name '*.md' | each hoot 
-  src-files -name '*.md' | each markdown
+  src-blog -name '*.md' | each blog-post
 
   cp -R static/* .tmp
 
@@ -65,12 +65,11 @@ cmd-build() {
   echo "Done"
 }
 
-
 cmd-watch() {
   set +e
   while true; do
     find src static -type f \
-      | entr -d ./asdf build
+      | entr -d ./asdf _BUILD
 
     # This ensures that if we kill entr with ctrl-c,
     # we break out of the loop. Otherwise, it is very
@@ -80,20 +79,29 @@ cmd-watch() {
   done
 }
 
+cmd-post() {
+  path="src/blog/$1"
+  mkdir -p "$path"
+  touch "$path/index.hoot.md"
+  vim "$path/index.hoot.md"
+}
+
 ########################################################################
 
 cmd=${1:-h}
 
 case "$cmd" in
+  "_BUILD") cmd-build ;;
   "i" | "init")   cmd-init ;;
   "b" | "build")  cmd-init && cmd-build ;;
   "w" | "watch")  cmd-init && cmd-watch ;;
-  "d" | "debug")  cmd-dbg ;;
+  "p" | "post")   cmd-post "${@:2}" ;;
   *)
     echo "Commands:"
     echo "    i, init   Set up the repository"
     echo "    b, build  Build the website"
     echo "    w, watch  Watch for changes and rebuild"
+    echo "    p, post   Create a new blog post"
   ;;
 esac
 
@@ -101,3 +109,4 @@ esac
 
 ########################################################################
 # vim: set tw=72 fdm=marker sts=2 ts=2 sw=2 et :
+########################################################################
