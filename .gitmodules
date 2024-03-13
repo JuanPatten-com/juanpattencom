@@ -1,0 +1,6 @@
+[submodule "lib/hoot"]
+	path = lib/hoot
+	url = git@github.com:jrpat/hoot.git
+[submodule "lib/lowdown"]
+	path = lib/lowdown
+	url = git@github.com:kristapsdz/lowdown.git
