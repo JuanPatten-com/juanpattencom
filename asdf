@@ -1,0 +1,103 @@
+#!/bin/bash
+set -euo pipefail
+
+########################################################################
+#
+# To add a command, add a function below and then add an entry for it
+# (optionally w/ a shortcut version) to the case statement at the end.
+#
+# For sanity's sake, be sure to run shellcheck on this file.
+#
+########################################################################
+
+each() { local IFS=; while read -r -d '' it; do $1 "$it"; done ; }
+q() { find "$1" "${@:2}" -print0 ; }
+
+########################################################################
+
+OUT="${OUT:=_public}"
+
+########################################################################
+
+src-dirs() { q src -mindepth 1 -type d ;}
+
+src-files() { q src -type f ! -name '_*' "$@" ;}
+
+make-dir() { mkdir -p ".tmp/${1#src/}" ;}
+
+hoot() {
+  PWD=src ./lib/hoot/hoot "${1#src/}" \
+    > ".tmp/${1#src/}"
+}
+
+markdown() {
+  PWD=src ./lib/hoot/hoot "${1#src/}" \
+    | ./lib/lowdown/lowdown -thtml - \
+    > ".tmp/${1#src/}"
+}
+
+########################################################################
+
+cmd-dbg() {
+  src-files -name '*.md'
+}
+
+cmd-init() {
+  git submodule update --init
+  make lib/hoot/hoot
+  make lib/lowdown/lowdown
+}
+
+cmd-build() {
+  printf 'Building... '
+
+  rm -rf .tmp; mkdir .tmp
+
+  src-dirs | each make-dir
+  src-files ! -name '*.md' | each hoot 
+  src-files -name '*.md' | each markdown
+
+  cp -R static/* .tmp
+
+  rm -rf "$OUT"
+  mv -f .tmp "$OUT"
+
+  echo "Done"
+}
+
+
+cmd-watch() {
+  set +e
+  while true; do
+    find src static -type f \
+      | entr -d ./asdf build
+
+    # This ensures that if we kill entr with ctrl-c,
+    # we break out of the loop. Otherwise, it is very
+    # difficult to kill this watch function.
+    # shellcheck disable=SC2181
+    if [ $? -eq 0 ]; then exit 0; fi
+  done
+}
+
+########################################################################
+
+cmd=${1:-h}
+
+case "$cmd" in
+  "i" | "init")   cmd-init ;;
+  "b" | "build")  cmd-init && cmd-build ;;
+  "w" | "watch")  cmd-init && cmd-watch ;;
+  "d" | "debug")  cmd-dbg ;;
+  *)
+    echo "Commands:"
+    echo "    i, init   Set up the repository"
+    echo "    b, build  Build the website"
+    echo "    w, watch  Watch for changes and rebuild"
+  ;;
+esac
+
+
+
+########################################################################
+# vim: set tw=72 fdm=marker sts=2 ts=2 sw=2 et :

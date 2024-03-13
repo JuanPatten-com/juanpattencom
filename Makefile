@@ -1,17 +1,22 @@
-deps := lib/hoot/hoot lib/lowdown/lowdown
+hoot-head := .git/modules/lib/hoot/refs/heads/main
+down-head := .git/modules/lib/lowdown/refs/heads/master
 
-all: $(deps)
 
-lib/hoot/hoot: lib/hoot
-	@echo Building hoot
-	@make -C lib/hoot
+site:
+	./asdf build
 
-lib/lowdown/lowdown: lib/lowdown lib/lowdown/Makefile.configure
-	@echo Building lowdown
-	@make -C lib/lowdown
+watch:
+	./asdf watch
 
-lib/lowdown/Makefile.configure:
-	@cd lib/lowdown && ./configure
 
-lib/hoot lib/lowdown:
-	@git submodule update --init
+lib/hoot/hoot: $(hoot-head)
+	make -C lib/hoot
+
+lib/lowdown/lowdown: $(down-head)
+	cd lib/lowdown \
+		&& ./configure \
+		&& make
+
+$(hoot-head) $(down-head):
+	git submodule update --init
+
