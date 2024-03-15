@@ -31,9 +31,10 @@ input, button, textarea, select {
     --text-2: rgb(40 40 47 / 0.7);
     --text-3: rgb(40 40 47 / 0.35);
     --text-4: rgb(40 40 47 / 0.2);
-    --line: rgb(0 0 10 / 0.075);
+    --line:       rgb(0 0 10 / 0.075);
+    --line-light: rgb(0 0 10 / 0.050);
     --line-heavy: rgb(0 0 10 / 0.125);
-    --underline: rgb(0 0 10 / 0.375);
+    --underline:  rgb(0 0 10 / 0.375);
   }
 }
 @media (prefers-color-scheme: dark) {
@@ -44,11 +45,25 @@ input, button, textarea, select {
     --text-2: rgb(235 235 245 / 0.7);
     --text-3: rgb(235 235 245 / 0.35);
     --text-4: rgb(235 235 245 / 0.2);
-    --line: rgb(250 250 255 / 0.075);
-    --line-heavy: rgb(255 255 255 / 0.2);
-    --underline: rgb(255 255 255 / 0.375);
+    --line:       rgb(250 250 255 / 0.075);
+    --line-light: rgb(250 250 255 / 0.050);
+    --line-heavy: rgb(250 250 255 / 0.200);
+    --underline:  rgb(250 250 255 / 0.375);
   }
 }
+
+
+/**********************************************************************/
+/*
+** Fonts
+*/
+
+:root {
+  --font-sans: ui-sans-serif, sans-serif;
+  --font-mono: ui-monospace, monospace;
+  --font-serif: ui-serif, serif;
+}
+
 
 
 /**********************************************************************/
@@ -57,16 +72,17 @@ input, button, textarea, select {
 */
 
 :root {
-  --fs--2: clamp(0.4297rem, 0.4131rem + 0.083vi, 0.4775rem);
-  --fs--1: clamp(0.6953rem, 0.6684rem + 0.1344vi, 0.7726rem);
-  --fs-0: clamp(1.125rem, 1.0815rem + 0.2174vi, 1.25rem);
-  --fs-1: clamp(1.8203rem, 1.7499rem + 0.3517vi, 2.0225rem);
-  --fs-2: clamp(2.9452rem, 2.8313rem + 0.5691vi, 3.2724rem);
-  --fs-3: clamp(4.7653rem, 4.5811rem + 0.9208vi, 5.2948rem);
-  --fs-4: clamp(7.7102rem, 7.4122rem + 1.4899vi, 8.5669rem);
-  --fs-5: clamp(12.4751rem, 11.993rem + 2.4107vi, 13.8613rem);
+  --fs--2: 0.75rem;
+  --fs--1: 0.875rem;
+  --fs-0: 1rem;
+  --fs-1: 1.75rem;
+  --fs-2: 2.5rem;
+  --fs-3: 3.25rem;
+  --fs-4: 4rem;
+  --fs-5: 4.75rem;
 
-  --fs-05: calc(var(--fs-0) + (var(--fs-1) - var(--fs-0)) / 2);
+  --fs-05: $(1 + (1.75 - 1) / 2)rem;
+  --fs-025: $(1 + (1.75 - 1) / 4)rem;
 }
 
 
@@ -82,15 +98,15 @@ $Small { .sm-hidden { display: none; } }
 /**********************************************************************/
 
 html {
-  font-family: ui-sans-serif, sans-serif;
+  font-family: var(--font-sans);
   color: var(--text);
   background: var(--bg);
+  font-size: 18px;
 }
 
 body {
   padding: 0 5vw;
   font-size: 1rem;
-  font-size: clamp(1rem, 0.95rem + 0.25vw, 1.25rem);
   line-height: 1.5;
 }
 
@@ -138,12 +154,12 @@ a.raquo::after {
 }
 
 p {
-  margin: 0.5em 0;
+  margin: 0.75em 0;
   line-height: 1.618;
 }
 
 
-#content {
+#content, #mast {
   width: 100%;
   max-width: 60ch;
   margin: 0 auto;
@@ -153,35 +169,51 @@ p {
 #mast {
   text-align: center;
   border-bottom: 1px solid var(--line);
-  padding-top: 2rem;
+  padding-top: 1rem;
   padding-bottom: 1.5rem;
   margin-bottom: 2em;
 }
 
 #mast h1 {
   line-height: 1;
-  padding-bottom: 0.25em;
-  letter-spacing: -0.03125ch;
+  font-size: var(--fs-1);
+  font-weight: 700;
   margin-bottom: 0;
 }
 
-#mast aside {
-  font-size: calc(var(--fs-0) * 0.75);
-  font-style: italic;
-  color: var(--text-3);
+#mast h1 a {
+  display: block;
+  text-decoration: none;
+  padding: 1rem;
 }
 
-@media screen and (max-width: 600px) {
-  #mast h1 {
-    font-size: calc(var(--fs-3) * 0.75);
-  }
-  #mast aside {
-    margin: 0 auto;
-  }
+#mast h1 a:hover {
+  text-decoration: underline;
+}
+
+#main-nav {
+  margin-top: -0.125rem;
+  gap: 1.5em;
+}
+
+#main-nav a {
+  font-size: var(--fs-0);
+  text-transform: uppercase;
+  font-variant: all-small-caps;
+  text-decoration: none;
+}
+
+#main-nav a::before {
+  content: '';
+  $[HoverTarget 0.5em]
+}
+
+#main-nav a:hover {
+  text-decoration: underline;
 }
 
 #eg a {
-  font-size: var(--fs-05);
+  font-size: var(--fs-1);
   font-weight: 500;
 }
 
@@ -194,8 +226,11 @@ section {
 }
 
 .is-to, .as {
+  display: inline-block;
+  font-weight: 650;
   letter-spacing: 0.25ch;
-  margin: 0 0.125ch 0 0.25ch;
+  margin: 0 0.125ch 0 0.1875ch;
+  transform: translateY(-0.125ex);
 }
 
 .project {
@@ -210,11 +245,26 @@ section {
   margin-left: 1em;
 }
 
-tt {
-  font-family: ui-monospace, monospace;
+tt, code {
+  font-family: var(--font-mono);
   padding: 0 0.25ch;
   background: var(--bg-tint);
   border-radius: 0.25ch;
+}
+
+pre {
+  font-family: var(--font-mono);
+  background: var(--bg-tint);
+  padding: 1em;
+  border-radius: 0.5ch;
+  border: 1px solid var(--line-light);
+  font-size: 0.875em;
+  line-height: 1.5;
+}
+
+pre code {
+  background: none;
+  padding: 0;
 }
 
 hr {

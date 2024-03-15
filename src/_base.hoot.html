@@ -1,3 +1,10 @@
+$[defaults {
+  meta {}
+  bodyClasses {}
+  contentClasses {}
+  extraStyles {}
+}]
+$[set title $[@ $meta title]]
 <!doctype html>
 <html>
   <head>
@@ -7,11 +14,37 @@
     <meta name="theme-color" content="rgb(255 255 255)" media="(prefers-color-scheme: light)">
     <meta name="theme-color" content="rgb(30 30 33)" media="(prefers-color-scheme: dark)">
 
-    <title>${title}</title>
+    <title>${title}$[= " - " if {$title ne ""}]Juan Patten</title>
 
     <link rel=stylesheet href="/style.css">
-
-    <meta data-foo="$[H/path ~/]">
-    $[- end head -]$head
+    ${extraStyles}
+    $[- end head -]
   </head>
+
+  <body class="${bodyClasses}">
+    $[+ defblock body +]
+    $[+ defblock header +]
+    <div id=mast vbox=center>
+      <h1><a href="/">Juan Patten</a></h1>
+      <nav id=main-nav hbox=between>
+        <a href="/blog">Blog</a>
+        <a href="/tools">Tools</a>
+        <a href="/libs">Libraries</a>
+      </nav>
+    </div>
+    $[--]
+    <div id=content class="${contentClasses}">
+      $[+ defblock content +]
+      $[--]
+    </div>
+    $[+ defblock footer +]
+    <footer hbox=center>
+      <span><a href="https://github.com/jrpat">GitHub</a> (<small><a href="https://github.com/runningskull">Old GH</a></small>)</span>
+      <a href="https://linkedin.com/in/juanpatten">LinkedIn</a>
+      <a href="/JuanPatten-CV-IC.pdf">Resumé (IC)</a>
+    </footer>
+    $[- footer -]
+    $[- end body -]
+  </body>
+</html>
 

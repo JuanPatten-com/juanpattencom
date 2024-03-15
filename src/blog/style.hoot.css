@@ -1,0 +1,64 @@
+article {
+  font-family: ui-serif, serif;
+  -webkit-font-smoothing: antialiased;
+}
+
+article h1 {
+  font-size: var(--fs-2);
+  font-weight: 700;
+  margin-bottom: 0.5em;
+}
+
+article h2 {
+  font-weight: 600;
+  font-size: var(--fs-1);
+  margin-top: 1.25em;
+  margin-bottom: 0.5em;
+}
+
+article h3 {
+  font-size: var(--fs-05);
+  font-weight: 600;
+  margin-top: 1.25em;
+  margin-bottom: 0.625em;
+}
+
+article h4 {
+  font-size: var(--fs-025);
+  font-weight: 600;
+}
+
+article :where(p, ul, ol, blockquote, pre) {
+  margin: 0 0 1em 0;
+}
+
+article li {
+  margin-bottom: 0.5em;
+}
+
+article strong {
+  font-weight: 620;
+}
+
+article small {
+  font-size: var(--fs--1);
+}
+
+.footnotes {
+  font-size: var(--fs--1);
+}
+
+article blockquote {
+  opacity: 0.8;
+  border-left: 0.375em solid var(--line);
+  padding: 0 3em 0 1em;
+}
+
+article blockquote p {
+  margin-bottom: 0;
+}
+
+article blockquote p:first-of-type {
+  font-variant: all-small-caps;
+}
+

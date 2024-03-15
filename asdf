@@ -35,12 +35,19 @@ hoot() {
 
 blog-post() {
   out=${1/.hoot.md/}
-  PWD=src ./lib/hoot/hoot "${1#src/}" \
-    | ./lib/lowdown/lowdown -thtml - \
+  # shellcheck disable=SC2002
+  cat "$1" \
+    | awk '/---/ && !x { gsub(/---+/, "$[+ block content +]"); x=1}; 1' - \
+    | echo -e "$(cat -)\n\n\$[- content -]\n\$[> ~/blog/_base.hoot.html]" \
+    | PWD=src ./lib/hoot/hoot - \
     > ".tmp/${out#src/}.html"
 }
 
 ########################################################################
+
+cmd-dbg() {
+  blog-post src/src/blog/libui/index.hoot.md
+}
 
 cmd-init() {
   git submodule update --init
@@ -91,7 +98,8 @@ cmd-post() {
 cmd=${1:-h}
 
 case "$cmd" in
-  "_BUILD") cmd-build ;;
+  "d" | "_DEBUG") cmd-dbg ;;
+  "B" | "_BUILD") cmd-build ;;
   "i" | "init")   cmd-init ;;
   "b" | "build")  cmd-init && cmd-build ;;
   "w" | "watch")  cmd-init && cmd-watch ;;

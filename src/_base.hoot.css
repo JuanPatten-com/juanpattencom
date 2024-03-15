@@ -3,3 +3,15 @@ $[set ContentWidth 60ch]
 $[set Large "@media screen and (min-width: ${ContentWidth})"]
 $[set Small "@media screen and (max-width: ${ContentWidth})"]
 
+$[+ template HoverTarget {pad} +]
+  position: absolute;
+  box-sizing: content-box;
+  padding: ${pad};
+  top: 0;
+  left: 0;
+  margin-top: -${pad};
+  margin-left: -${pad};
+  width: 100%;
+  height: 100%;
+$[--]
+

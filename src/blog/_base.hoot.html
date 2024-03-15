@@ -1,0 +1,13 @@
+$[+ block content +]
+<article class=prose>
+$[exec $[H/path ~/../lib/lowdown/lowdown] \
+  --html-no-skiphtml \
+  --html-no-escapehtml \
+  <<${content}
+]
+</article>
+$[--]
+$[.append extraStyles {
+<link rel=stylesheet href="/blog/style.css">
+}]
+$[> ~/_base.hoot.html]
