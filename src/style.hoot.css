@@ -257,7 +257,14 @@ section {
 
 tt, code {
   font-family: var(--font-mono);
-  padding: 0 0.25ch;
+  font-size: 0.925em;
+  font-weight: 500;
+  padding: 0 0.375ch;
+}
+
+tt:after, code:after {
+  content: '';
+  $[HoverTarget 0.25ch 0];
   background: var(--bg-tint);
   border-radius: 0.25ch;
 }
