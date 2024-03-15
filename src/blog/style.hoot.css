@@ -1,3 +1,5 @@
+$[> ~/_base.hoot.css]
+
 article {
   font-family: ui-serif, serif;
   -webkit-font-smoothing: antialiased;
@@ -45,7 +47,7 @@ article small {
 }
 
 .footnotes {
-  font-size: var(--fs--1);
+  font-size: var(--fs--2);
 }
 
 article blockquote {
@@ -56,9 +58,58 @@ article blockquote {
 
 article blockquote p {
   margin-bottom: 0;
+  isolation: isolate;
 }
 
 article blockquote p:first-of-type {
   font-variant: all-small-caps;
 }
+
+article sup[id^="fnref"] a {
+  color: var(--color-2);
+  text-decoration-color: var(--underline-2);
+  padding: 0 0.25ch;
+  font-family: var(--font-mono);
+  font-size: 0.625rem;
+  font-weight: 600;
+}
+
+article sup[id^="fnref"] a::after {
+  content: '';
+  $[HoverTarget 0.75ch];
+  border-radius: 0.5ch;
+}
+
+article sup[id^="fnref"] a:hover::after {
+  background: var(--bg-tint);
+}
+
+article sup[id^="fnref"] a:hover::before {
+  content: '';
+  $[HoverTarget 2.5ch];
+}
+
+
+.tippy-box[data-theme~='jrpat'] {
+  background: var(--bg-above);
+  max-width: 40ch;
+  padding: 0 1em;
+  font-size: 0.75em;
+  border-radius: 1ch;
+  border: 1px solid var(--line-faint);
+  box-shadow: 0 3px 8px var(--popover-shadow),
+              0 6px 18px var(--popover-shadow);
+  z-index: 9999999;
+  font-family: var(--font-sans);
+}
+
+.tippy-box a[rev="footnote"] {
+  display: none;
+}
+
+.footnote-popover p:last-of-type {
+  margin: 0;
+}
+
+
 

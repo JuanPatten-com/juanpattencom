@@ -26,6 +26,7 @@ src-files() { q src -type f ! -name '_*' "$@" ;}
 src-blog()  { q src/blog -type f ! -name '_*' -name '*.md' "$@" ;}
 
 make-dir() { mkdir -p ".tmp/${1#src/}" ;}
+copy-src() { cp "$1" ".tmp/${1#src/}" ;}
 
 hoot() {
   out=${1/.hoot/}
@@ -61,8 +62,9 @@ cmd-build() {
   rm -rf .tmp; mkdir .tmp
 
   src-dirs | each make-dir
-  src-files ! -name '*.md' | each hoot 
-  src-blog -name '*.md' | each blog-post
+  src-files ! -name '*.hoot.md' -name '*.hoot.*' | each hoot 
+  src-files ! -name '*.hoot.*' | each copy-src
+  src-blog -name '*.hoot.md' | each blog-post
 
   cp -R static/* .tmp
 

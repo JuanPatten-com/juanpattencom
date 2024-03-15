@@ -26,6 +26,7 @@ input, button, textarea, select {
 @media (prefers-color-scheme: light) {
   :root {
     --bg: rgb(255 255 255);
+    --bg-above: rgb(235 235 240);
     --bg-tint: rgb(0 0 0 / 0.05);
     --text: rgb(29 29 31);
     --text-2: rgb(40 40 47 / 0.7);
@@ -34,12 +35,17 @@ input, button, textarea, select {
     --line:       rgb(0 0 10 / 0.075);
     --line-light: rgb(0 0 10 / 0.050);
     --line-heavy: rgb(0 0 10 / 0.125);
-    --underline:  rgb(0 0 10 / 0.375);
+    --line-faint: rgb(0 0 10 / 0.025);
+    --underline:   rgb(0 0 10 / 0.333);
+    --underline-2: rgb(0 0 10 / 0.25);
+
+    --popover-shadow: rgb(0 0 0 / 0.2);
   }
 }
 @media (prefers-color-scheme: dark) {
   :root {
     --bg: rgb(30 30 33);
+    --bg-above: rgb(50 50 52);
     --bg-tint: rgb(250 250 255 / 0.05);
     --text: #fff;
     --text-2: rgb(235 235 245 / 0.7);
@@ -48,7 +54,11 @@ input, button, textarea, select {
     --line:       rgb(250 250 255 / 0.075);
     --line-light: rgb(250 250 255 / 0.050);
     --line-heavy: rgb(250 250 255 / 0.200);
-    --underline:  rgb(250 250 255 / 0.375);
+    --line-faint: rgb(250 250 255 / 0.025);
+    --underline:   rgb(250 250 255 / 0.333);
+    --underline-2: rgb(250 250 255 / 0.25);
+
+    --popover-shadow: rgb(0 0 0 / 0.5);
   }
 }
 

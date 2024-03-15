@@ -9,26 +9,17 @@ $[set meta {
 
 Back in 2016 I worked on a UI project built with
 [ClojureScript](https://clojurescript.org), [React](https://react.dev),
-and [Reagent](https://reagent-project.github.io). It featured:
+and [Reagent](https://reagent-project.github.io). It featured
+unidirectional data flow[^libui-unidata] with seamless data
+binding[^libui-binding], fine-grained reactivity[^libui-grain], reactive
+derived data[^libui-derived], and unique takes on state management
+& reusable components. It was a pleasant, performant[^web-perf] way of
+building UIs, and a lot of the ideas have gained popularity since
+then[^solid].
 
-- **Unidirectional data flow**: State can only be updated via "commands"
-  -- pure functions that take in current state and return a new state.
-- **Seamless data binding**: Not a contradiction with the above point.
-- **Fine grained reactivity**: Components update only when absolutely
-  necessary -- ie. when state that they depend on changes.
-- **Derived data, flowing**: Components can not only depend on stored
-  state, but also on the result of functions which in turn depend on
-  stored state or other reactive functions.
-- **Reusable components** that can modify isolated islands of
-  application state without knowing anything about its structure.
-
-A lot of the ideas and techniques we used have gained popularity since
-then, and recently **[Solid](https://docs.solidjs.com)** combines many
-of the same core ideas into a very similar development
-experience. I recommend checking it out.
-
-I wanted to highlight a few of the more unique aspects of the system,
-and try to build something similar in a small-scale, understandable way.
+When packaged all together, these frameworks can feel magical, but the
+core concepts are really pretty simple. Let's unpack them and see how
+simply we can build something similar.
 
 
 ## The Goal
@@ -77,10 +68,14 @@ management approach boiled down to:
 
 ## Reactive Algorithm
 
-While many reactive frameworks are built around "observers" and
-"derivations", we're going to build ours on two core primitives:
-**Publisher** and **Subscriber**.
-
+There are lots of names for the core primitives of reactive
+frameworks. [Solid][solidjs] calls them
+[`signal`](https://docs.solidjs.com/concepts/signals) and
+[`memo`](https://docs.solidjs.com/concepts/derived-values/memos),
+[MobX](mobxjs) calls them
+[`observable`](https://mobx.js.org/observable-state.html) and
+[`computed`](https://mobx.js.org/computeds.html). We're going to call
+ours **`Atom`** and **`Calc`**.
 
 
 
@@ -91,4 +86,29 @@ If you liked this post, you might be interested in:
 - [Build Systems à la Carte](https://www.microsoft.com/en-us/research/uploads/prod/2018/03/build-systems.pdf)
 
 
+
+[^libui-unidata]: State could only be updated via "commands" -- pure
+  functions that take in the current state and return a new
+  state. Clojure's immutability makes this feel a lot more like
+  imperative programming.
+
+[^libui-binding]: This might seem like a contradiction to the above, but
+  it's not. Read on...
+
+[^libui-grain]: Components update only when absolutely necessary --
+  ie. when state that they depend on changes.
+
+[^libui-derived]: Components can not only depend on stored state, but
+  also on the result of functions which in turn depend on stored state
+  or other reactive functions.
+
+[^solid]: I highly recommend **[Solid][solidjs]** these
+  days.
+
+[^web-perf]: For web apps, anyway 😉
+
+
+[solidjs]: https://docs.solidjs.com
+[mobxjs]: https://mobx.js.org/the-gist-of-mobx.html
+[mobx-algo]: https://medium.com/hackernoon/becoming-fully-reactive-an-in-depth-explanation-of-mobservable-55995262a254#71b1
 
