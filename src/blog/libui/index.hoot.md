@@ -296,8 +296,7 @@ $[contentsOf ~/blog/libui/depgraph-final.svg]
 
 ## The Code
 
-`Atom`, `Calc`, and `Effect` are the most primitive parts of our API,
-but notice that they share some functionality:
+Notice that `Atom`, `Calc`, and `Effect` have overlapping functionality:
 
 - `Atom` and `Calc` both maintain some `latest` value, and can both be
   observed.
@@ -313,7 +312,8 @@ but notice that they share some functionality:
 > We'll also say that a `Publisher` publishes to `outputs`, and
 > a `Subscriber` subscribes to `inputs`.
 
-Here's an initial sketch of these primitives:
+Here's an implementation of the `Publisher` and `Subscriber` primitives:
+
 
 ```javascript
 const activeSubscribers = []
@@ -334,11 +334,29 @@ class Publisher {
     }
     return this.latest
   }
+
+  becomeStale() {
+    for (const o of this.outputs) o.inputIsStale()
+  }
+
+  becomeFresh() {
+    for (const o of this.outputs) o.inputIsFresh()
+  }
 }
 
 
 class Subscriber {
+  #staleInputs = 0
+
+  #onStale = (() => {})
+  #onFresh = (() => {})
+
   inputs = new Set()
+
+  constructor({onStale, onFresh}) {
+    this.#onStale = onStale
+    this.#onFresh = onFresh
+  }
   
   observeRefsOf(fn) {
     const oldInputs = this.inputs
@@ -351,11 +369,79 @@ class Subscriber {
     }
     return result
   }
+
+  inputIsStale() {
+    if (++this.#staleInputs == 1) {
+      this.#onStale()
+    }
+  }
+
+  inputIsFresh(didChange) {
+    if (--this.#staleInputs == 0) {
+      this.#onFresh()
+    }
+  }
 }
 ```
 
-Now we've got a `Publisher` that can be observed, and a `Subscriber`
-that can do the observing, but they don't actually communicate.
+Now we can implement our API on top of these.
+
+An `Atom` has no dependencies. It is just a `Publisher`:
+
+```javascript
+export function Atom(value) {
+  const pub = new Publisher(value)
+  const getter = () => pub.observe()
+  getter.peek = () => pub.latest
+  getter.set = (newValue) => {
+    if (newValue == pub.latest) { return }
+    pub.becomeStale()
+    pub.latest = newValue
+    pub.becomeFresh(true)
+  }
+  getter.update = (fn) => {
+    getter.set(fn(pub.latest))
+  }
+  getter.dispose = () => pub.dispose()
+  return getter
+}
+```
+
+A `Calc` is both a `Publisher` and a `Subscriber`:
+
+```javascript
+export function Calc(compute) {
+  const pub = new Publisher()
+  const sub = new Subscriber({
+    onStale: () => {
+      pub.becomeStale()  // notify our dependents
+    },
+    onFresh: () => {
+      recompute()
+      pub.becomeFresh()
+    }
+  })
+  function recompute() {
+    pub.latest = sub.observeRefsOf(compute)
+  }
+  let getter = () => pub.observe()
+  getter.peek = () => pub.latest
+  getter.dispose = () => {
+    pub.dispose()
+    sub.dispose()
+  }
+  recompute()
+  return getter
+}
+```
+
+An `Effect` is just a `Calc` whose value never changes:
+
+```javascript
+export function Effect(action) {
+  return Calc(() => action())
+}
+```
 
 
 -----
