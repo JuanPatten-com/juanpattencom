@@ -80,7 +80,7 @@ state we need in our system is input data. When we make changes to the
 input data, all the derived data should automatically update to reflect
 the change. That is, everything *flows* from the input data.
 
-In particular, <b class=semibold>*the entire user interface is derived
+Note: <b class=semibold>*the entire user interface is derived
 data*</b>. This is the core idea of frameworks like [React][reactjs]
 when they say "UI is a pure function of state".
 
@@ -115,7 +115,7 @@ graph](https://en.wikipedia.org/wiki/Dependency_graph)*__.
 
 Let's sketch out how we might turn these ideas into a library. First
 we'll sketch out the API we want to expose, and then we'll think about
-how we might implement it.
+how to implement it.
 
 ### API
 
@@ -136,7 +136,7 @@ x.set(10)  // x's value is 10
 or apply a function to its current value:
 
 ```javascript
-x.update(x => x * 2)  // x's value is 20
+x.alter(x => x * 2)  // x's value is 20
 ```
 
 To get the current value of an `Atom`, we call it like a function:
@@ -225,7 +225,7 @@ but notice that they share some functionality:
 - `Calc` and `Effect` can both "subscribe" to changes from their
   dependencies.
 
-This implies there's something more fundamental at work: some kind of
+This suggests there's something more fundamental at work: some kind of
 "[publish-subscribe](https://en.wikipedia.org/wiki/Publish–subscribe_pattern)"
 mechanism. Let's keep this in mind.
 
