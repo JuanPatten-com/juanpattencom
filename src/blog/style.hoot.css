@@ -3,35 +3,46 @@ $[> ~/_base.hoot.css]
 article {
   font-family: ui-serif, serif;
   -webkit-font-smoothing: antialiased;
+  hyphens: auto;
+}
+
+article {
+  hyphens: auto;
 }
 
 article h1 {
   font-size: var(--fs-2);
   font-weight: 700;
-  margin-bottom: 0.5em;
+  margin-bottom: 1rem;
 }
 
 article h2 {
   font-weight: 600;
   font-size: var(--fs-1);
   margin-top: 1.25em;
-  margin-bottom: 0.5em;
+  margin-bottom: 1rem;
 }
 
 article h3 {
   font-size: var(--fs-05);
   font-weight: 600;
   margin-top: 1.25em;
-  margin-bottom: 0.625em;
+  margin-bottom: 1rem;
 }
 
 article h4 {
   font-size: var(--fs-025);
   font-weight: 600;
+  margin-top: 1em;
+  margin-bottom: 1rem;
 }
 
 article :where(p, ul, ol, blockquote, pre) {
-  margin: 0 0 1em 0;
+  margin: 0 0 1rem 0;
+}
+
+article details {
+  margin-top: 0.5rem;
 }
 
 article li {
@@ -46,8 +57,15 @@ article small {
   font-size: var(--fs--1);
 }
 
+article :not(pre) :where(tt, code) {
+  font-size: 0.9625em;
+  padding: 0 0.0625ch;
+  letter-spacing: -0.0625ch;
+}
+
 .footnotes {
   font-size: var(--fs--2);
+  hyphens: auto;
 }
 
 article blockquote {
@@ -89,9 +107,14 @@ article sup[id^="fnref"] a:hover::before {
   $[HoverTarget 2.5ch];
 }
 
+b.semibold {
+  font-weight: 500;
+}
+
 
 .tippy-box[data-theme~='jrpat'] {
   background: var(--bg-above);
+  color: var(--color);
   max-width: 40ch;
   padding: 0 1em;
   font-size: 0.75em;
@@ -101,6 +124,11 @@ article sup[id^="fnref"] a:hover::before {
               0 6px 18px var(--popover-shadow);
   z-index: 9999999;
   font-family: var(--font-sans);
+  hyphens: auto;
+}
+
+.tippy-arrow {
+  color: var(--bg-above);
 }
 
 .tippy-box a[rev="footnote"] {

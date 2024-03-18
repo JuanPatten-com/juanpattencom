@@ -35,11 +35,11 @@ input, button, textarea, select {
     --line:       rgb(0 0 10 / 0.075);
     --line-light: rgb(0 0 10 / 0.050);
     --line-heavy: rgb(0 0 10 / 0.125);
-    --line-faint: rgb(0 0 10 / 0.025);
+    --line-faint: rgb(0 0 10 / 0.0375);
     --underline:   rgb(0 0 10 / 0.333);
     --underline-2: rgb(0 0 10 / 0.25);
 
-    --popover-shadow: rgb(0 0 0 / 0.2);
+    --popover-shadow: rgb(0 0 0 / 0.15);
   }
 }
 @media (prefers-color-scheme: dark) {
@@ -257,16 +257,27 @@ section {
 
 tt, code {
   font-family: var(--font-mono);
-  font-size: 0.925em;
-  font-weight: 500;
-  padding: 0 0.375ch;
+  font-weight: 515;
 }
 
-tt:after, code:after {
-  content: '';
-  $[HoverTarget 0.25ch 0];
+strong tt, strong code {
+  font-weight: 700;
+}
+
+code.eqn {
+  word-spacing: -0.375ch;
+}
+
+summary {
+  cursor: pointer;
+}
+
+details p {
+  font-size: 0.875em;
+}
+
+summary:hover {
   background: var(--bg-tint);
-  border-radius: 0.25ch;
 }
 
 pre {
