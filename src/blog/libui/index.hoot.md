@@ -3,6 +3,17 @@ $[set meta {
   date    2024-03-13
 }]
 
+$[set toc {
+  {"The Basics" the-basics} {}
+  {"The Jargon" the-jargon} {}
+  {"The Library" the-library} {
+    {"Atom" atom} {}
+    {"Calc" calc} {}
+    {"Effect" effect} {}
+  }
+  {"The Algorithm" the-algorithm}
+}]
+
 -----
 
 # $[@ $meta title]
@@ -117,9 +128,7 @@ Let's sketch out how we might turn these ideas into a library. First
 we'll sketch out the API we want to expose, and then we'll think about
 how to implement it.
 
-### API
-
-#### Atom
+### Atom
 
 An `Atom` starts with an initial value:
 
@@ -155,7 +164,7 @@ x.peek()  // => 20
 
 That's all for `Atom`.[^atom-dispose]
 
-#### Calc
+### Calc
 
 A `Calc` is just a function. Ideally a [pure function][pure-function]:
 
@@ -188,7 +197,7 @@ xSquaredPlus2.peek()  // => 402
 Since we can't change the value of a `Calc` directly, that's all for
 `Calc`.[^calc-dispose]
 
-#### Effect
+### Effect
 
 An `Effect` is like a `Calc`, but instead of calculating a new value
 when a datum changes, an effect *does something* when a datum changes:
@@ -216,20 +225,6 @@ model serial processes via cascading <code>Effect</code>s.
 </details>
 
 
-### Implementation
-
-`Atom`, `Calc`, and `Effect` are the most primitive parts of our API,
-but notice that they share some functionality:
-
-- `Atom` and `Calc` can both "publish" changes to their dependents.
-- `Calc` and `Effect` can both "subscribe" to changes from their
-  dependencies.
-
-This suggests there's something more fundamental at work: some kind of
-"[publish-subscribe](https://en.wikipedia.org/wiki/Publish–subscribe_pattern)"
-mechanism. Let's keep this in mind.
-
-
 ## The Algorithm
 
 Now that we've got the basic API, we need to figure out how to do the
@@ -242,13 +237,24 @@ figure out two things:
    *only if* -- *all* of its dependencies are __*fresh*__ (ie. not
    stale).
 
-#1 is fairly straightforward in our framework. Each datum keeps track
-of both its dependencies and its dependents. So the changed `Atom` knows
-which `Calc`s depend on it, and those `Calc`s know which ones depend on
-them, and so forth.
+#1 is fairly straightforward in our framework. Each datum will keep
+track of both its dependencies and its dependents. So the changed `Atom`
+knows which `Calc`s depend on it, and those `Calc`s know which ones
+depend on them, and so forth.
 
-There are a number of ways to figure out #2. Some frameworks do
-a [topological sort][topo-sort] keep the 
+Here's how we'll figure out #2:
+
+1. When an atom is told to change its value, it will first notify all
+   its dependents that it is `stale`. They will in turn notify all their
+   dependents, and so forth. When this is done, every datum that could
+   possibly be affected by the change has been marked stale.
+2. Each datum will keep track of how many of its dependencies have been
+   marked stale.
+3. The `Atom` will store its new value, and then notify all its
+   dependents that it is `fresh`.
+
+There are a number of ways to figure out #2.[^topo-sort] But we're going
+to borrow a clever approach from MobX.
 
 
 Here's how we'll implement this procedure:
@@ -258,8 +264,24 @@ Here's how we'll implement this procedure:
    dependents, and so forth. When this is done, every datum that could
    possibly be affected by this change will be marked stale.
 2. Each datum will keep track of how many of its 
-2. The `Atom` will store its new value, and then notify all its
+3. The `Atom` will store its new value, and then notify all its
    depenents that it is `fresh`.
+
+
+-----
+
+### Implementation
+
+`Atom`, `Calc`, and `Effect` are the most primitive parts of our API,
+but notice that they share some functionality:
+
+- `Atom` and `Calc` can both "publish" changes to their dependents.
+- `Calc` and `Effect` can both "subscribe" to changes from their
+  dependencies.
+
+This suggests there's something more fundamental at work: some kind of
+"[publish-subscribe](https://en.wikipedia.org/wiki/Publish–subscribe_pattern)"
+mechanism. Let's keep this in mind.
 
 -----
 
@@ -299,6 +321,9 @@ If you liked this post, you might be interested in:
 
 [^atoms-dont-have-inputs]: Since `Atom`s don't depend on anything, no
     other `Atom` could possibly change.
+
+[^topo-sort]: We could do a [topological sort][topo-sort] on the
+    dependency graph and then go in order.
 
 -----
 
