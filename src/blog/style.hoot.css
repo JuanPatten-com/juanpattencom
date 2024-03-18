@@ -15,6 +15,7 @@ article h1 {
   font-weight: 700;
   margin-bottom: 1rem;
 }
+article h1 code { font-weight: 700; }
 
 article h2 {
   font-weight: 600;
@@ -22,6 +23,7 @@ article h2 {
   margin-top: 1.25em;
   margin-bottom: 1rem;
 }
+article h2 code { font-weight: 600; }
 
 article h3 {
   font-size: var(--fs-05);
@@ -29,6 +31,7 @@ article h3 {
   margin-top: 1.25em;
   margin-bottom: 1rem;
 }
+article h3 code { font-weight: 600; }
 
 article h4 {
   font-size: var(--fs-025);
@@ -36,13 +39,26 @@ article h4 {
   margin-top: 1em;
   margin-bottom: 1rem;
 }
+article h4 code { font-weight: 600; }
 
-article :where(p, ul, ol, blockquote, pre) {
+article :where(p, ul, ol, blockquote, pre, details) {
   margin: 0 0 1rem 0;
 }
 
-article details {
-  margin-top: 0.5rem;
+article details summary {
+  margin-bottom: 0.5rem;
+}
+
+article details p {
+  border-left: 2px solid var(--line);
+  padding: 0 3em 0 1em;
+  margin-left: 0.5ch;
+  margin-bottom: 0;
+  margin-top: 0;
+}
+
+article details p:not(:last-of-type) {
+  padding-bottom: 0.5rem;
 }
 
 article li {
@@ -63,6 +79,10 @@ article :not(pre) :where(tt, code) {
   letter-spacing: -0.0625ch;
 }
 
+article p code {
+  white-space: nowrap;
+}
+
 .footnotes {
   font-size: var(--fs--2);
   hyphens: auto;
@@ -76,10 +96,9 @@ article blockquote {
 
 article blockquote p {
   margin-bottom: 0;
-  isolation: isolate;
 }
 
-article blockquote p:first-of-type {
+article blockquote p:first-of-type:not(:last-of-type) {
   font-variant: all-small-caps;
 }
 
@@ -108,7 +127,7 @@ article sup[id^="fnref"] a:hover::before {
 }
 
 b.semibold {
-  font-weight: 500;
+  font-weight: 575;
 }
 
 

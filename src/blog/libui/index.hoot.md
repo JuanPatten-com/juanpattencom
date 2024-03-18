@@ -11,193 +11,264 @@ $[set meta {
 {{ WRITE AN INTRO }}
 ```
 
-## Derived Data, Flowing
+## The Basics
 
 Let's start by thinking about the fundamental building blocks of our
 system. To borrow some [popular terminology][tarpit], we have 2 basic
 types of data:
 
-- __*Input data*__ are facts that aren't reducible to some other
-  facts. In the canonical "rectangle" example, the rectangle's
-  `width` and `height` are input data. We need to persist this data
-  (ie. store it in a database) because we can't derive it later.
-- __*Derived data*__ is everything we can calculate based on the input
-  data. The rectangle's area, for example is <code class=eqn>width
-  × height</code>. Its diagonal is <code
-  class=eqn>sqrt(width<sup>2</sup> + height<sup>2</sup>)</code>. We
-  don't need[^real-world-caching] to store these things because we can
-  calculate them from the input data at any time.
+- __*Input data*__ are facts that aren't reducible to any other
+  facts. These must be told to us, and we must persist them somewhere
+  like a database.
+- __*Derived data*__ are facts which can be calculated from the input
+  data. These do not need to be told to us, and we do not
+  need[^real-world-caching] to persist them.
 
-The goal of a reactive system is to only store and modify input
-data. Then when we change the input data, everything else should
-automatically reflect the change. That is, everything *flows* from the
-input data.
-
-Notably, <b class=semibold>*the entire user interface is derived
-data*</b>. This is the core idea of [React][reactjs] et al. If this
-seems obvious to you, skip the following examples.
+If that makes intuitive sense, feel free to skip the following examples.
 
 <details>
-<summary>Example 1</summary>
+<summary>Example 1: The Canonical Rectangle Example</summary>
 <p>
-Think of filling out a form. The form fields are input
-data. Whether they are valid is derived data, and whether the UI is
-showing a validation error is also derived data. When the form inputs
-change, the UI should change along with it, automatically.
+Pretend we are making an app which displays some facts about a
+rectangle. Namely, the <code>width</code>, <code>height</code>,
+<code>area</code>, and <code>diagonal</code> of the rectangle.
+</p>
+<p>
+The rectangle's <code>width</code> and <code>height</code> are <em>input
+data</em>, because the only way we can know these facts is to be told
+them. On the other hand, the <code>area</code> and <code>diagonal</code>
+are <em>derived data</em>, because they can be calculated from
+the <code>width</code> and <code>height</code>.
 </p>
 </details>
 
 <details>
-<summary>Example 2</summary>
+<summary>Example 2: Filling Out a Form</summary>
 <p>
-The most visceral example is a spreadsheet. Reactive framework people
-want all UIs to work like spreadsheets. Some cells are just numbers
-(ie. <em>input</em>), and some are equations which reference other cells
-(ie. <em>derived</em>). When one of the input cells is updated, all the
-cells that are derived from that cell update automatically.
+Think of filling out a typical web form. There are some form fields,
+which may be valid or invalid. If they are valid, <tt>Submit</tt> button
+is enabled. If they are invalid, the <tt>Submit</tt> button is disabled,
+and an error message is displayed.
+</p>
+<p>
+The form fields are the <em>input data</em>. Whether they are valid or
+invalid is <em>derived data</em>. Additionally, the state of the
+<tt>Submit</tt> button and whether the error message is displayed are
+also <em>derived data</em>.
 </p>
 </details>
 
-## Terminology
+<details>
+<summary>Example 3: A Spreadsheet</summary>
+<p>
+The most direct & visceral example is a spreadsheet. Some cells are just
+numbers (<em>input data</em>), and some are equations which reference
+other cells (<em>derived data</em>). When one of the input cells is
+updated, all the cells that are derived from that cell update
+automatically.
+</p>
+<p>
+Reactive framework people want all UIs to work like
+spreadsheets. 
+</p>
+</details>
 
-There are as many names for these 2 building blocks as there are
-reactive libraries. Solid calls them "signal" and "memo". MobX calls
-them "observable" and "computed". We're going to call them:
+### Derived Data, Flowing
 
-- Input data will be **`Atom`** because it's "atomic": irreducible to
-  any other thing. Though really I just stole the name from
-  Lisp[^lisp-atom].
-- **`Calc`** - derived data. Named because it's `calc`ulated from the
-  input data. And because it has the same number of
-  letters. [Symmetry](https://store.doverpublications.com/products/9780486217765)!
+The goal of a "reactive" framework is to make it so the only mutable
+state we need in our system is input data. When we make changes to the
+input data, all the derived data should automatically update to reflect
+the change. That is, everything *flows* from the input data.
 
-An `Atom` and a `Calc` are both types of __*datum*__, which we define
+In particular, <b class=semibold>*the entire user interface is derived
+data*</b>. This is the core idea of frameworks like [React][reactjs]
+when they say "UI is a pure function of state".
+
+## The Jargon
+
+There are as many names for these building blocks as there are reactive
+libraries. Solid calls them "signal" and "memo". MobX calls them
+"observable" and "computed". We're going to call them:
+
+- **`Atom`** -- input data -- because it's "atomic": irreducible to
+  any other thing.[^lisp-atom]
+- **`Calc`** -- derived data -- because it's `calc`ulated from the
+  input data.[^symmetry]
+
+`Atom` and a `Calc` are both a kind of __*datum*__, which we define
 because it's more convenient than typing "`Atom` or `Calc`" every time.
 
-If a `Calc` references a datum, we say that it __*tracks*__ that datum,
-and whenever the tracked value changes, the `Calc` will re-calculate.
+If a `Calc` uses the value of a datum, we say that it __*tracks*__ that
+datum. Whenever the tracked value changes, the `Calc` will automatically
+re-calculate.
+
+If datum `Child` tracks datum `Parent`, we say that `Child` is
+a __*dependent*__ of `Parent`, and that `Parent` is
+a __*dependency*__ of `Child`.
 
 As `Calc`s depend on other `Calc`s, which in turn depend on other
-`Calc`s and `Atom`s, we are forming a __*dependency
-[graph](https://en.wikipedia.org/wiki/Graph_(abstract_data_type))*__.
+`Calc`s and `Atom`s, we are forming a __*[dependency
+graph](https://en.wikipedia.org/wiki/Dependency_graph)*__.
 
 
 ## The Library
 
-OK, with that out of the way, let's start designing our library. Step
-1 -- Crucial: What should we call it?
+Let's sketch out how we might turn these ideas into a library. First
+we'll sketch out the API we want to expose, and then we'll think about
+how we might implement it.
 
-Hmmmmm... hrmmmm.... hrrrrrmmmmmm... 🤔
+### API
 
-- It'll be small. Small... microscopic... micro... **`μ`**_!_
-- It'll be reactive. Reactive... reaction... **`rxn`**_!_
-- It'll be in Javascript. This one's easy... **`.js`**
+#### Atom
 
-Introducing **`μrxn.js`**: a small, reac--- Say what? Too
-hard to type? Weird mouth feel? Right. Hmmm.... hrmmmmm... hrrrmm---
-I've got it!
-
-How about **`urx.js`**?
-
-...*checks GitHub*...
-
-[That'll do, pig. That'll do.](https://www.youtube.com/watch?v=rjQtzV9IZ0Q)
-
-## The API
-
-Let's start by designing the API. What will it feel like to use
-`urx.js`?
-
-### Atom
-
-Creating an `Atom` is simple. We start with an initial value:
+An `Atom` starts with an initial value:
 
 ```javascript
-let x = Atom(5)
+let x = Atom(5)  // x's value is 5
 ```
 
 To change an `Atom`'s value, we can either set it directly:
 
 ```javascript
-x.set(10)  // x() == 10
+x.set(10)  // x's value is 10
 ```
 
 or apply a function to its current value:
 
 ```javascript
-x.update(x => x * 2)  // x() == 20
+x.update(x => x * 2)  // x's value is 20
 ```
 
-To get the current value of an `Atom`'s, we call it like
-a function[^atom-is-a-function]:
+To get the current value of an `Atom`, we call it like a function:
 
 ```javascript
-let currentValueOfX = x()  // 20
+x()  // => 20
 ```
 
-Anything that 
-
-<details>
-<summary>...almost.</summary>
-<p>
-We also need to be able to <code>dispose()</code> an
-<code>Atom</code>. More on that in a moment&hellip;
-</p>
-</details>
-
-#### Implementation
-
-Let's sketch out an outline of the implementation of `Atom`:
+If a `Calc` gets the value of an `Atom`, it *tracks* that `Atom`. This
+is usually what we want, but if we want to look without tracking, we can
+*peek*:
 
 ```javascript
-function Atom(value) {
-  const getter = () => { /* ... */ }
-  getter.peek = () => pub.latest
-  getter.set = (newValue) => {
-    if (newValue == pub.latest) { return }
-    pub.stale()
-    pub.latest = newValue
-    pub.fresh(true)
-  }
-  getter.update = (fn) => {
-    getter.set(fn(pub.latest))
-  }
-  getter.dispose = () => pub.dispose()
-  return getter
-}
-
+x.peek()  // => 20
 ```
 
-### Calc
+That's all for `Atom`.[^atom-dispose]
 
-A `Calc` is just a function that references an `Atom` or another `Calc`:
+#### Calc
+
+A `Calc` is just a function. Ideally a [pure function][pure-function]:
 
 ```javascript
 let xSquared = Calc(() => x() ** 2)
 ```
 
-Notice that this `Calc` __*tracks*__ the value of the `Atom` we created
-earlier.
+<sup>Notice that this `Calc` __*tracks*__ the value of the `Atom` we created
+earlier.</sup>
 
 To get the current value of a `Calc`, we call it like
-a function[^calc-is-a-function]:
+a function:
 
 ```javascript
-let currentValueOfXSquared = xSquared()  // => 400
+xSquared()  // => 400
 ```
+
+`Calc`s can track other `Calc`s:
+
+```javascript
+let xSquaredPlus2 = (() => xSquared() + 2)
+```
+
+Like `Atom`s, we can peek at `Calc`s without tracking them:
+
+```javascript
+xSquaredPlus2.peek()  // => 402
+```
+
+Since we can't change the value of a `Calc` directly, that's all for
+`Calc`.[^calc-dispose]
+
+#### Effect
+
+An `Effect` is like a `Calc`, but instead of calculating a new value
+when a datum changes, an effect *does something* when a datum changes:
+logs to the console, makes a network request, updates the UI, etc...
+
+An `Effect` is just a function:
+
+```javascript
+let logger = Effect(() => console.log(`x == \${x()}`))
+```
+
+<details>
+<summary>Wait, so is <code>Calc</code> just a special case of
+<code>Effect</code>&hellip;</summary>
+<p>
+&hellip; whose action is to recompute & store its value.
+Or is it the other way around? Maybe an <code>Effect</code> is just
+a <code>Calc</code> whose value is always <code>undefined</code>.
+</p>
+<p>
+Both are valid ways of looking at it, but in our implementation the
+latter is actually true. And that comes with a benefit: we can easily
+model serial processes via cascading <code>Effect</code>s.
+</p>
+</details>
+
+
+### Implementation
+
+`Atom`, `Calc`, and `Effect` are the most primitive parts of our API,
+but notice that they share some functionality:
+
+- `Atom` and `Calc` can both "publish" changes to their dependents.
+- `Calc` and `Effect` can both "subscribe" to changes from their
+  dependencies.
+
+This implies there's something more fundamental at work: some kind of
+"[publish-subscribe](https://en.wikipedia.org/wiki/Publish–subscribe_pattern)"
+mechanism. Let's keep this in mind.
 
 
 ## The Algorithm
 
-The basic procedure for recalculating the tree goes in two phases:
+Now that we've got the basic API, we need to figure out how to do the
+"reactive" part. Essentially, when an `Atom` is changed, we need to
+figure out two things:
 
-1. Phase 1 is figuring out every `Calc`[^atoms-dont-have-inputs] which
-   could possibly change based on the `Atom`'s new value and labelling
-   them __*stale*__. We also label `Atom` itself stale.
-2. Phase 2 is figuring out the order in which to recalculate. A `Calc`
-   may be re&shy;calculated if -- and *only* if -- *all* of its
-   dependencies are __*fresh*__ (ie. not stale).
+1. Every `Calc`[^atoms-dont-have-inputs] that could possibly change
+   based on the `Atom`'s new value. We'll call these __*stale*__.
+2. The order in which to recalculate. A `Calc` may recalculate if -- and
+   *only if* -- *all* of its dependencies are __*fresh*__ (ie. not
+   stale).
 
+#1 is fairly straightforward in our framework. Each datum keeps track
+of both its dependencies and its dependents. So the changed `Atom` knows
+which `Calc`s depend on it, and those `Calc`s know which ones depend on
+them, and so forth.
+
+There are a number of ways to figure out #2. Some frameworks do
+a [topological sort][topo-sort] keep the 
+
+
+Here's how we'll implement this procedure:
+
+1. When we tell an `Atom` to change its value, it will first notify all
+   its dependents that it is `stale`. They will in turn notify all their
+   dependents, and so forth. When this is done, every datum that could
+   possibly be affected by this change will be marked stale.
+2. Each datum will keep track of how many of its 
+2. The `Atom` will store its new value, and then notify all its
+   depenents that it is `fresh`.
+
+-----
+
+**`u`** for micro (because `μ` is harder to type)<br>
+**`rx`** for "reaction" -- a common abbreviation <br>
+**`.js`** for
+... you got this one.
+
+It's available on GitHub, so... ✔ that'll do.
 
 -----
 
@@ -210,12 +281,21 @@ If you liked this post, you might be interested in:
 [^real-world-caching]: Though in practice, some derived data is so
     expensive to calculate that we end up caching it.
 
-[^lisp-atom]: Or more specifically in this case,
-    [Clojure](https://clojuredocs.org/clojure.core/atom) and
+[^lisp-atom]: And because I stole it from Lisp -- specifically in this
+    case [Clojure](https://clojuredocs.org/clojure.core/atom) and
     [Reagent](http://reagent-project.github.io/docs/master/reagent.ratom.html#var-atom).
 
-[^atom-is-a-function]: Because it *is* a function.
-[^calc-is-a-function]: Because it *is* a function.
+[^symmetry]: And it's the same number of
+    letters. [Symmetry](https://store.doverpublications.com/products/9780486217765)!
+
+[^atom-dispose]: Almost. We also need to be able to `dispose()` of an
+    `Atom`, but we'll get to that later.
+
+[^calc-dispose]: Almost. We also need to be able to `dispose()` of
+    a `Calc`, but we'll get to that later.
+
+[^effect-dispose]: Almost. We also need to be able to `dispose()` of an
+    `Effect`, but we'll get to that later.
 
 [^atoms-dont-have-inputs]: Since `Atom`s don't depend on anything, no
     other `Atom` could possibly change.
@@ -224,3 +304,5 @@ If you liked this post, you might be interested in:
 
 [tarpit]: https://curtclifton.net/papers/MoseleyMarks06a.pdf
 [reactjs]: https://react.dev
+[pure-function]: https://en.wikipedia.org/wiki/Pure_function
+[topo-sort]: https://en.wikipedia.org/wiki/Topological_sorting
