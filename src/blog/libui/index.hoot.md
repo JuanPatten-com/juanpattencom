@@ -1,5 +1,5 @@
 $[set meta {
-  title   "Let's Build a Reactive UI Framework"
+  title   "Let's Build a Reactive UI Framework -- Part 1: Data Flow"
   date    2024-03-13
 }]
 
@@ -95,7 +95,7 @@ Note: <b class=semibold>*the entire user interface is derived
 data*</b>. This is the core idea of frameworks like [React][reactjs]
 when they say "UI is a pure function of state".
 
-## The Jargon
+### Jargon
 
 There are as many names for these building blocks as there are reactive
 libraries. Solid calls them "signal" and "memo". MobX calls them
@@ -109,11 +109,11 @@ libraries. Solid calls them "signal" and "memo". MobX calls them
 `Atom` and a `Calc` are both a kind of __*datum*__, which we define
 because it's more convenient than typing "`Atom` or `Calc`" every time.
 
-If a `Calc` uses the value of a datum, we say that it __*tracks*__ that
-datum. Whenever the tracked value changes, the `Calc` will automatically
-re-calculate.
+If a `Calc` uses the value of a datum, we say that it __*observes*__
+that datum. Whenever the observed datum changes, the `Calc` will
+automatically re-calculate.
 
-If datum `Child` tracks datum `Parent`, we say that `Child` is
+If datum `Child` observes datum `Parent`, we say that `Child` is
 a __*dependent*__ of `Parent`, and that `Parent` is
 a __*dependency*__ of `Child`.
 
@@ -121,8 +121,9 @@ As `Calc`s depend on other `Calc`s, which in turn depend on other
 `Calc`s and `Atom`s, we are forming a __*[dependency
 graph](https://en.wikipedia.org/wiki/Dependency_graph)*__.
 
+-----
 
-## The Library
+## The API
 
 Let's sketch out how we might turn these ideas into a library. First
 we'll sketch out the API we want to expose, and then we'll think about
@@ -154,9 +155,9 @@ To get the current value of an `Atom`, we call it like a function:
 x()  // => 20
 ```
 
-If a `Calc` gets the value of an `Atom`, it *tracks* that `Atom`. This
-is usually what we want, but if we want to look without tracking, we can
-*peek*:
+If a `Calc` gets the value of an `Atom`, it observes that `Atom`. This
+is usually what we want, but if we want to look without observing, we
+can *peek*:
 
 ```javascript
 x.peek()  // => 20
@@ -172,7 +173,7 @@ A `Calc` is just a function. Ideally a [pure function][pure-function]:
 let xSquared = Calc(() => x() ** 2)
 ```
 
-<sup>Notice that this `Calc` __*tracks*__ the value of the `Atom` we created
+<sup>Notice that this `Calc` observes the value of the `Atom` we created
 earlier.</sup>
 
 To get the current value of a `Calc`, we call it like
@@ -182,13 +183,13 @@ a function:
 xSquared()  // => 400
 ```
 
-`Calc`s can track other `Calc`s:
+`Calc`s can observe other `Calc`s:
 
 ```javascript
 let xSquaredPlus2 = (() => xSquared() + 2)
 ```
 
-Like `Atom`s, we can peek at `Calc`s without tracking them:
+Like `Atom`s, we can peek at `Calc`s without observing them:
 
 ```javascript
 xSquaredPlus2.peek()  // => 402
@@ -203,85 +204,159 @@ An `Effect` is like a `Calc`, but instead of calculating a new value
 when a datum changes, an effect *does something* when a datum changes:
 logs to the console, makes a network request, updates the UI, etc...
 
-An `Effect` is just a function:
+An `Effect` is just a function that will be re-run whenever any of its
+observed datums change:
 
 ```javascript
 let logger = Effect(() => console.log(`x == \${x()}`))
 ```
 
-<details>
-<summary>Wait, so is <code>Calc</code> just a special case of
-<code>Effect</code>&hellip;</summary>
-<p>
-&hellip; whose action is to recompute & store its value.
-Or is it the other way around? Maybe an <code>Effect</code> is just
-a <code>Calc</code> whose value is always <code>undefined</code>.
-</p>
-<p>
-Both are valid ways of looking at it, but in our implementation the
-latter is actually true. And that comes with a benefit: we can easily
-model serial processes via cascading <code>Effect</code>s.
-</p>
-</details>
+> Is a `Calc` just a special case of an `Effect`? Kind
+of.[^calc-effect-duality]
 
+-----
 
 ## The Algorithm
 
-Now that we've got the basic API, we need to figure out how to do the
-"reactive" part. Essentially, when an `Atom` is changed, we need to
-figure out two things:
+Every time an `Atom` is updated, we need to figure out two things:
 
 1. Every `Calc`[^atoms-dont-have-inputs] that could possibly change
    based on the `Atom`'s new value. We'll call these __*stale*__.
-2. The order in which to recalculate. A `Calc` may recalculate if -- and
-   *only if* -- *all* of its dependencies are __*fresh*__ (ie. not
-   stale).
+2. The order in which to recalculate. If `Child` depends on `Parent`,
+   then `Parent` needs to recalculate before `Child`. Specifically:
+   - A `Calc` *may* recalculate if and only if all of its dependencies
+     are __*fresh*__ (ie. not stale).
+   - A `Calc` *should* recalculate if and only if any of its
+     dependencies actually changed value.
 
-#1 is fairly straightforward in our framework. Each datum will keep
-track of both its dependencies and its dependents. So the changed `Atom`
-knows which `Calc`s depend on it, and those `Calc`s know which ones
-depend on them, and so forth.
+Let's imagine a dependency graph that looks like this:
 
-Here's how we'll figure out #2:
+<div class=frame75>
+$[contentsOf ~/blog/libui/depgraph-start.svg]
+</div>
 
-1. When an atom is told to change its value, it will first notify all
-   its dependents that it is `stale`. They will in turn notify all their
+Squares are `Atom`s. Circles are `Calc`s. Arrows mean "depends-on".
+
+Here's how it works:
+
+1. When an `Atom` is told to change its value, it will first notify all
+   its dependents that it is stale. They will in turn notify all their
    dependents, and so forth. When this is done, every datum that could
    possibly be affected by the change has been marked stale.
-2. Each datum will keep track of how many of its dependencies have been
-   marked stale.
-3. The `Atom` will store its new value, and then notify all its
-   dependents that it is `fresh`.
 
-There are a number of ways to figure out #2.[^topo-sort] But we're going
-to borrow a clever approach from MobX.
+<div class=frame75>
+$[contentsOf ~/blog/libui/depgraph-step1.svg]
+</div>
 
+2. Each datum keeps track of how many of its dependencies are
+   stale. Notice in the example that `C3` has two stale dependencies:
+   `C1` and `A1`.
 
-Here's how we'll implement this procedure:
+3. The `Atom` stores its new value and notifies all its dependents that
+   it is fresh. When a `Calc` is notified that one of its dependencies has become
+   fresh, it recalculates *if and only if* all of its dependencies are
+   now fresh.
 
-1. When we tell an `Atom` to change its value, it will first notify all
-   its dependents that it is `stale`. They will in turn notify all their
-   dependents, and so forth. When this is done, every datum that could
-   possibly be affected by this change will be marked stale.
-2. Each datum will keep track of how many of its 
-3. The `Atom` will store its new value, and then notify all its
-   depenents that it is `fresh`.
+<div class=frame75>
+$[contentsOf ~/blog/libui/depgraph-step2.svg]
+</div>
+
+> At this point, `C1` can recalculate, because all of its dependencies
+> (just `A1`) are fresh. However, `C3` cannot recalculate yet because
+> one of its dependencies (`C1`) is still stale.
+
+5. Once a `Calc` recalculates, it is now fresh, and it notifies its
+   dependents.
+
+<div class=frame75>
+$[contentsOf ~/blog/libui/depgraph-step3.svg]
+</div>
+
+> `C3` may now recalculate -- as can `C4` and `C6` -- because all of
+> their dependencies are fresh.
+
+6. This process continues until all datums are fresh.
+
+<div class=frame75>
+$[contentsOf ~/blog/libui/depgraph-step4.svg]
+</div>
+
+It's worth noting that when a `Calc` recalculates, it might end up with
+a new set of dependencies. For example, a form will no longer depend
+on `errorMessage` if all its inputs are valid.
+
+If we imagine that `C7` was our form:
+
+<div class=frame75>
+$[contentsOf ~/blog/libui/depgraph-final.svg]
+</div>
 
 
 -----
 
-### Implementation
+## The Code
 
 `Atom`, `Calc`, and `Effect` are the most primitive parts of our API,
 but notice that they share some functionality:
 
-- `Atom` and `Calc` can both "publish" changes to their dependents.
-- `Calc` and `Effect` can both "subscribe" to changes from their
-  dependencies.
+- `Atom` and `Calc` both maintain some `latest` value, and can both be
+  observed.
+- `Calc` and `Effect` both run some function, and automatically observe
+  any datum that function uses.
 
-This suggests there's something more fundamental at work: some kind of
-"[publish-subscribe](https://en.wikipedia.org/wiki/Publish–subscribe_pattern)"
-mechanism. Let's keep this in mind.
+> **A Note on Nomenclature**
+>
+> We could call these "observable" and "observer", but I find those
+> names a bit clunky, and they're difficult to abbreviate in code. Let's
+> call them `Publisher` and `Subscriber` instead.
+> 
+> We'll also say that a `Publisher` publishes to `outputs`, and
+> a `Subscriber` subscribes to `inputs`.
+
+Here's an initial sketch of these primitives:
+
+```javascript
+const activeSubscribers = []
+
+class Publisher {
+  latest = undefined
+  outputs = new Set()
+
+  constructor(initialValue) {
+    this.latest = initialValue
+  }
+
+  observe() {
+    let sub = activeSubscribers.at(-1)
+    if (sub != null) {
+      sub.inputs.add(this)
+      this.outputs.add(sub)
+    }
+    return this.latest
+  }
+}
+
+
+class Subscriber {
+  inputs = new Set()
+  
+  observeRefsOf(fn) {
+    const oldInputs = this.inputs
+    this.inputs = new Set()
+    activeSubscribers.push(this)
+    let result = fn()
+    activeSubscribers.pop()
+    for (const i of oldInputs.difference(this.inputs)) {
+      i.outputs.delete(this)
+    }
+    return result
+  }
+}
+```
+
+Now we've got a `Publisher` that can be observed, and a `Subscriber`
+that can do the observing, but they don't actually communicate.
+
 
 -----
 
@@ -318,6 +393,16 @@ If you liked this post, you might be interested in:
 
 [^effect-dispose]: Almost. We also need to be able to `dispose()` of an
     `Effect`, but we'll get to that later.
+
+[^calc-effect-duality]: We could say that a `Calc` is just an `Effect`
+    whose action is to recompute & store its value.  Or is it the other
+    way around? Maybe an `Effect` is just a `Calc` whose value is always
+    `undefined`.
+
+    Both are valid ways of looking at it, but in our implementation the
+    latter is actually true. And that comes with a benefit: we can
+    easily model serial processes via cascading `Effect`s.
+
 
 [^atoms-dont-have-inputs]: Since `Atom`s don't depend on anything, no
     other `Atom` could possibly change.

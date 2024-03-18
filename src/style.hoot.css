@@ -88,9 +88,9 @@ input, button, textarea, select {
   --fs--1: 0.875rem;
   --fs-0: 1rem;
   --fs-1: 1.75rem;
-  --fs-2: 2.5rem;
-  --fs-3: 3.25rem;
-  --fs-4: 4rem;
+  --fs-2: 2.25rem;
+  --fs-3: 3.75rem;
+  --fs-4: 4.25rem;
   --fs-5: 4.75rem;
 
   --fs-05: $(1 + (1.75 - 1) / 2)rem;
