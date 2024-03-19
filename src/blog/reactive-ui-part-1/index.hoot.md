@@ -3,6 +3,27 @@ $[set meta {
   date    2024-03-13
 }]
 
+$[set extraStyles {
+    <style>
+        @media (prefers-color-scheme: light) {
+            .depgraph-stroke {
+                stroke: #1d1d1d;
+            }
+            .depgraph-fill {
+                fill: #1d1d1d;
+            }
+        }
+        @media (prefers-color-scheme: dark) {
+            .depgraph-stroke {
+                stroke: rgb(225 225 225);
+            }
+            .depgraph-fill {
+                fill: rgb(225 225 225);
+            }
+        }
+    </style>
+}]
+
 $[set toc {
   {"The Basics" the-basics} {}
   {"The Jargon" the-jargon} {}
@@ -21,6 +42,8 @@ $[set toc {
 ```
 {{ WRITE AN INTRO }}
 ```
+
+The goal is simple implementation, with reasonable performance.
 
 ## The Basics
 
@@ -86,50 +109,49 @@ spreadsheets.
 
 ### Derived Data, Flowing
 
-The goal of a "reactive" framework is to make it so the only mutable
-state we need in our system is input data. When we make changes to the
-input data, all the derived data should automatically update to reflect
-the change. That is, everything *flows* from the input data.
+The goal of a "reactive" framework is for the only mutable state in our
+system to be input data. When we make changes to the input data, all the
+derived data should automatically update to reflect the change. The
+system "reacts" to changes in the input data.
 
-Note: <b class=semibold>*the entire user interface is derived
-data*</b>. This is the core idea of frameworks like [React][reactjs]
+In particular, <b class=semibold>the entire user interface is derived
+data</b>. This is the core idea of frameworks like [React][reactjs]
 when they say "UI is a pure function of state".
 
-### Jargon
+### Terminology
 
-There are as many names for these building blocks as there are reactive
-libraries. Solid calls them "signal" and "memo". MobX calls them
-"observable" and "computed". We're going to call them:
+Let's start by defining some terms:
 
-- **`Atom`** -- input data -- because it's "atomic": irreducible to
-  any other thing.[^lisp-atom]
-- **`Calc`** -- derived data -- because it's `calc`ulated from the
-  input data.[^symmetry]
+- An **`Atom`** is an indivisible piece of input data. We can change an
+  `Atom`'s value only by replacing it with a new value.
 
-`Atom` and a `Calc` are both a kind of __*datum*__, which we define
-because it's more convenient than typing "`Atom` or `Calc`" every time.
+- A **`Calc`** is an individual piece of derived data, ie. a function
+  that `calc`ulates some value based on `Atom`s and other `Calc`s.
 
-If a `Calc` uses the value of a datum, we say that it __*observes*__
-that datum. Whenever the observed datum changes, the `Calc` will
-automatically re-calculate.
+- `Atom` and a `Calc` are both a kind of __*fact*__, which we define
+  because it's more convenient than typing "`Atom` or `Calc`" every
+  time.
 
-If datum `Child` observes datum `Parent`, we say that `Child` is
-a __*dependent*__ of `Parent`, and that `Parent` is
-a __*dependency*__ of `Child`.
+- If a `Calc` uses the value of a fact, we say it __*observes*__ that
+  fact. Whenever the observed fact changes, the `Calc` will
+  automatically re-calculate.
 
-As `Calc`s depend on other `Calc`s, which in turn depend on other
-`Calc`s and `Atom`s, we are forming a __*[dependency
-graph](https://en.wikipedia.org/wiki/Dependency_graph)*__.
+- If `Child` observes `Parent`, we say that `Child` is a __*dependent*__
+  of `Parent`, and that `Parent` is a __*dependency*__ of `Child`.
+
+- As `Calc`s depend on other `Calc`s, which in turn depend on other
+  `Calc`s and `Atom`s, we are forming a __*[dependency
+  graph](https://en.wikipedia.org/wiki/Dependency_graph)*__.
 
 -----
 
-## The API
+## Library API
 
 Let's sketch out how we might turn these ideas into a library. First
-we'll sketch out the API we want to expose, and then we'll think about
-how to implement it.
+we'll think about the API we want, and work backwards from there to the
+implementation.
 
-### Atom
+### `Atom`
 
 An `Atom` starts with an initial value:
 
@@ -155,7 +177,7 @@ To get the current value of an `Atom`, we call it like a function:
 x()  // => 20
 ```
 
-If a `Calc` gets the value of an `Atom`, it observes that `Atom`. This
+If a `Calc` uses the value of an `Atom`, it observes that `Atom`. This
 is usually what we want, but if we want to look without observing, we
 can *peek*:
 
@@ -165,7 +187,7 @@ x.peek()  // => 20
 
 That's all for `Atom`.[^atom-dispose]
 
-### Calc
+### `Calc`
 
 A `Calc` is just a function. Ideally a [pure function][pure-function]:
 
@@ -183,29 +205,28 @@ a function:
 xSquared()  // => 400
 ```
 
-`Calc`s can observe other `Calc`s:
+`Calc`s can also observe other `Calc`s:
 
 ```javascript
 let xSquaredPlus2 = (() => xSquared() + 2)
 ```
 
-Like `Atom`s, we can peek at `Calc`s without observing them:
+We can peek at a `Calc` without observing it:
 
 ```javascript
 xSquaredPlus2.peek()  // => 402
 ```
 
-Since we can't change the value of a `Calc` directly, that's all for
-`Calc`.[^calc-dispose]
+That's all for `Calc`.[^calc-dispose]
 
-### Effect
+### `Effect`
 
 An `Effect` is like a `Calc`, but instead of calculating a new value
-when a datum changes, an effect *does something* when a datum changes:
+when a fact changes, an effect *does something* when a fact changes:
 logs to the console, makes a network request, updates the UI, etc...
 
 An `Effect` is just a function that will be re-run whenever any of its
-observed datums change:
+observed facts change:
 
 ```javascript
 let logger = Effect(() => console.log(`x == \${x()}`))
@@ -214,9 +235,43 @@ let logger = Effect(() => console.log(`x == \${x()}`))
 > Is a `Calc` just a special case of an `Effect`? Kind
 of.[^calc-effect-duality]
 
+That's all for `Effect`[^effect-dispose].
+
+### Example Usage
+
+Here's an example of what using the library should look like:
+
+```javascript
+
+```
+
 -----
 
-## The Algorithm
+## Library Implementation
+
+Now that we've got an API in mind, let's start working on an
+implementation.
+
+### Automatic Dependencies
+
+Part of the "magic" feeling of a reactive framework is that it we never
+have to explicitly specify dependencies. The system figures them out for
+us.
+
+This is not only convenient, but important. If we have to manually
+specify dependencies, it's easy to make mistakes. For any given `Calc`,
+we might "oversubscribe" (continue observing a fact that is no longer
+needed) or "undersubscribe" (forget to observe a fact, and thus don't
+react when it changes).
+
+How does the system automatically figure out dependencies? It's
+surprisingly simple:
+
+1. It keeps track of which `Calc` is currently running.
+2. In the getter of a fact, it tells the currently running `Calc` (if
+   any) to observe itself.
+
+### Reacting to Changes
 
 Every time an `Atom` is updated, we need to figure out two things:
 
@@ -232,7 +287,7 @@ Every time an `Atom` is updated, we need to figure out two things:
 Let's imagine a dependency graph that looks like this:
 
 <div class=frame75>
-$[contentsOf ~/blog/libui/depgraph-start.svg]
+$[contentsOf ./depgraph-start.svg]
 </div>
 
 Squares are `Atom`s. Circles are `Calc`s. Arrows mean "depends-on".
@@ -241,14 +296,14 @@ Here's how it works:
 
 1. When an `Atom` is told to change its value, it will first notify all
    its dependents that it is stale. They will in turn notify all their
-   dependents, and so forth. When this is done, every datum that could
+   dependents, and so forth. When this is done, every fact that could
    possibly be affected by the change has been marked stale.
 
 <div class=frame75>
-$[contentsOf ~/blog/libui/depgraph-step1.svg]
+$[contentsOf ./depgraph-step1.svg]
 </div>
 
-2. Each datum keeps track of how many of its dependencies are
+2. Each fact keeps track of how many of its dependencies are
    stale. Notice in the example that `C3` has two stale dependencies:
    `C1` and `A1`.
 
@@ -258,7 +313,7 @@ $[contentsOf ~/blog/libui/depgraph-step1.svg]
    now fresh.
 
 <div class=frame75>
-$[contentsOf ~/blog/libui/depgraph-step2.svg]
+$[contentsOf ./depgraph-step2.svg]
 </div>
 
 > At this point, `C1` can recalculate, because all of its dependencies
@@ -269,16 +324,16 @@ $[contentsOf ~/blog/libui/depgraph-step2.svg]
    dependents.
 
 <div class=frame75>
-$[contentsOf ~/blog/libui/depgraph-step3.svg]
+$[contentsOf ./depgraph-step3.svg]
 </div>
 
 > `C3` may now recalculate -- as can `C4` and `C6` -- because all of
 > their dependencies are fresh.
 
-6. This process continues until all datums are fresh.
+6. This process continues until all facts are fresh.
 
 <div class=frame75>
-$[contentsOf ~/blog/libui/depgraph-step4.svg]
+$[contentsOf ./depgraph-step4.svg]
 </div>
 
 It's worth noting that when a `Calc` recalculates, it might end up with
@@ -288,35 +343,42 @@ on `errorMessage` if all its inputs are valid.
 If we imagine that `C7` was our form:
 
 <div class=frame75>
-$[contentsOf ~/blog/libui/depgraph-final.svg]
+$[contentsOf ./depgraph-final.svg]
 </div>
 
+### And Now, Some Code
 
------
+Now that we've got a sense for how things should work, we can start
+implementing our library.
 
-## The Code
+Notice that `Atom` and `Calc` have overlapping functionality: they both
+maintain some `latest` value, can both be observed, and both are able to
+update their dependents when their latest value changes.
 
-Notice that `Atom`, `Calc`, and `Effect` have overlapping functionality:
+Let's call this shared functionality a `Publisher`. We'll say that
+a `Publisher`'s dependents are its `outputs`.
 
-- `Atom` and `Calc` both maintain some `latest` value, and can both be
-  observed.
-- `Calc` and `Effect` both run some function, and automatically observe
-  any datum that function uses.
+The flip side of a `Publisher` is a `Subscriber`. We'll say that
+a `Subscriber`'s dependencies are its `inputs`.
 
-> **A Note on Nomenclature**
->
-> We could call these "observable" and "observer", but I find those
-> names a bit clunky, and they're difficult to abbreviate in code. Let's
-> call them `Publisher` and `Subscriber` instead.
-> 
-> We'll also say that a `Publisher` publishes to `outputs`, and
-> a `Subscriber` subscribes to `inputs`.
-
-Here's an implementation of the `Publisher` and `Subscriber` primitives:
-
+<details>
+<summary>
+A Note on Nomenclature
+</summary>
+<p>
+We could call these "observable" and "observer", but I find those
+names a bit clunky, and they tend to blur together when I'm scanning
+code. "Publisher" and "subscriber" are more more obvious terms. As
+a bonus they are also conveniently abbreviated: "pub" and "sub".
+</p>
+<p>
+Likewise with "dependency" and "dependent" &ndash; they are just too
+similar.  "Input" and "output" are much more obvious and scannable.
+</p>
+</details>
 
 ```javascript
-const activeSubscribers = []
+const runningSubscribers = []
 
 class Publisher {
   latest = undefined
@@ -326,12 +388,8 @@ class Publisher {
     this.latest = initialValue
   }
 
-  observe() {
-    let sub = activeSubscribers.at(-1)
-    if (sub != null) {
-      sub.inputs.add(this)
-      this.outputs.add(sub)
-    }
+  getValue() {
+    runningSubscribers.at(-1)?.observe(this)
     return this.latest
   }
 
@@ -347,23 +405,28 @@ class Publisher {
 
 class Subscriber {
   #staleInputs = 0
+  #changedInputs = 0
 
-  #onStale = (() => {})
-  #onFresh = (() => {})
+  #onStale; #onFresh
 
   inputs = new Set()
 
   constructor({onStale, onFresh}) {
-    this.#onStale = onStale
-    this.#onFresh = onFresh
+    this.#onStale = onStale ?? (() => {})
+    this.#onFresh = onFresh ?? (() => {})
+  }
+
+  observe(pub) {
+    this.inputs.add(pub)
+    pub.outputs.add(this)
   }
   
-  observeRefsOf(fn) {
+  recordInputsOf(fn) {
     const oldInputs = this.inputs
     this.inputs = new Set()
-    activeSubscribers.push(this)
+    runningSubscribers.push(this)
     let result = fn()
-    activeSubscribers.pop()
+    runningSubscribers.pop()
     for (const i of oldInputs.difference(this.inputs)) {
       i.outputs.delete(this)
     }
@@ -371,15 +434,20 @@ class Subscriber {
   }
 
   inputIsStale() {
-    if (++this.#staleInputs == 1) {
-      this.#onStale()
-    }
+    if (++this.#staleInputs == 1) { this.#onStale() }
   }
 
   inputIsFresh(didChange) {
+    if (didChange) { ++this.#changedInputs }
     if (--this.#staleInputs == 0) {
-      this.#onFresh()
+      this.#onFresh(this.#changedInputs > 0)
+      this.#changedInputs = 0
     }
+  }
+
+  dispose() {
+    for (const i of this.inputs) { i.outputs.delete(this) }
+    this.inputs.clear()
   }
 }
 ```
@@ -399,7 +467,7 @@ export function Atom(value) {
     pub.latest = newValue
     pub.becomeFresh(true)
   }
-  getter.update = (fn) => {
+  getter.alter = (fn) => {
     getter.set(fn(pub.latest))
   }
   getter.dispose = () => pub.dispose()
@@ -443,6 +511,33 @@ export function Effect(action) {
 }
 ```
 
+-----
+
+## Effect
+
+An `Effect` is like a `Calc`, but instead of calculating a new value
+when a fact changes, an effect *does something* when a fact changes:
+logs to the console, makes a network request, updates the UI, etc...
+
+An `Effect` is just a function that will be re-run whenever any of its
+observed facts change:
+
+```javascript
+let logger = Effect(() => console.log(`x == \${x()}`))
+```
+
+> Is a `Calc` just a special case of an `Effect`? Kind
+of.[^calc-effect-duality]
+
+That's all for `Effect`[^effect-dispose].
+
+-----
+
+## Optimizations
+
+- TODO: stale != changed
+- TODO: cycle detection
+
 
 -----
 
@@ -463,13 +558,6 @@ If you liked this post, you might be interested in:
 
 [^real-world-caching]: Though in practice, some derived data is so
     expensive to calculate that we end up caching it.
-
-[^lisp-atom]: And because I stole it from Lisp -- specifically in this
-    case [Clojure](https://clojuredocs.org/clojure.core/atom) and
-    [Reagent](http://reagent-project.github.io/docs/master/reagent.ratom.html#var-atom).
-
-[^symmetry]: And it's the same number of
-    letters. [Symmetry](https://store.doverpublications.com/products/9780486217765)!
 
 [^atom-dispose]: Almost. We also need to be able to `dispose()` of an
     `Atom`, but we'll get to that later.

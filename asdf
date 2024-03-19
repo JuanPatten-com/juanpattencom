@@ -35,13 +35,14 @@ hoot() {
 }
 
 blog-post() {
-  out=${1/.hoot.md/}
+  file=${1#src/}
+  out=${file/.hoot.md/}
   # shellcheck disable=SC2002
   cat "$1" \
     | awk '/---/ && !x { gsub(/---+/, "$[+ block content +]"); x=1}; 1' - \
     | echo -e "$(cat -)\n\n\$[- content -]\n\$[> ~/blog/_base.hoot.html]" \
-    | PWD=src ./lib/hoot/hoot - \
-    > ".tmp/${out#src/}.html"
+    | PWD=src FILE="${file}" ./lib/hoot/hoot - \
+    > ".tmp/${out}.html"
 }
 
 ########################################################################
