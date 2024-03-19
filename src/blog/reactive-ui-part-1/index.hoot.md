@@ -185,8 +185,6 @@ can *peek*:
 x.peek()  // => 20
 ```
 
-That's all for `Atom`.[^atom-dispose]
-
 ### `Calc`
 
 A `Calc` is just a function. Ideally a [pure function][pure-function]:
@@ -217,8 +215,6 @@ We can peek at a `Calc` without observing it:
 xSquaredPlus2.peek()  // => 402
 ```
 
-That's all for `Calc`.[^calc-dispose]
-
 ### `Effect`
 
 An `Effect` is like a `Calc`, but instead of calculating a new value
@@ -234,8 +230,6 @@ let logger = Effect(() => console.log(`x == \${x()}`))
 
 > Is a `Calc` just a special case of an `Effect`? Kind
 of.[^calc-effect-duality]
-
-That's all for `Effect`[^effect-dispose].
 
 ### Example Usage
 
@@ -348,130 +342,84 @@ $[contentsOf ./depgraph-final.svg]
 
 ### And Now, Some Code
 
-Now that we've got a sense for how things should work, we can start
-implementing our library.
+Now we have a sense of how things should work, and we can start
+implementing the library.
 
-Notice that `Atom` and `Calc` have overlapping functionality: they both
-maintain some `latest` value, can both be observed, and both are able to
-update their dependents when their latest value changes.
+Notice that `Atom` and `Calc` share a lot of functionality. They both
+maintain some `latest` value, can be observed, and update their
+dependents when their value changes.
 
-Let's call this shared functionality a `Publisher`. We'll say that
-a `Publisher`'s dependents are its `outputs`.
-
-The flip side of a `Publisher` is a `Subscriber`. We'll say that
-a `Subscriber`'s dependencies are its `inputs`.
-
-<details>
-<summary>
-A Note on Nomenclature
-</summary>
-<p>
-We could call these "observable" and "observer", but I find those
-names a bit clunky, and they tend to blur together when I'm scanning
-code. "Publisher" and "subscriber" are more more obvious terms. As
-a bonus they are also conveniently abbreviated: "pub" and "sub".
-</p>
-<p>
-Likewise with "dependency" and "dependent" &ndash; they are just too
-similar.  "Input" and "output" are much more obvious and scannable.
-</p>
-</details>
+Let's factor them out into a base. We'll call it a `Reactor`.
 
 ```javascript
-const runningSubscribers = []
+class Reactor {
+  static running = []
 
-class Publisher {
   latest = undefined
-  outputs = new Set()
+  compute = undefined
 
-  constructor(initialValue) {
-    this.latest = initialValue
+  #staleInputs = 0
+  #inputs = new Set()
+  #outputs = new Set()
+
+  constructor(fn) {
+    this.compute = fn
+    this.#recompute()
   }
 
-  getValue() {
-    runningSubscribers.at(-1)?.observe(this)
+  track() {
+    Reactor.running.at(-1)?.#observe(this)
     return this.latest
   }
 
-  becomeStale() {
-    for (const o of this.outputs) o.inputIsStale()
+  #observe(reactor) {
+    this.#inputs.add(reactor)
+    reactor.#outputs.add(this)
   }
 
-  becomeFresh() {
-    for (const o of this.outputs) o.inputIsFresh()
-  }
-}
-
-
-class Subscriber {
-  #staleInputs = 0
-  #changedInputs = 0
-
-  #onStale; #onFresh
-
-  inputs = new Set()
-
-  constructor({onStale, onFresh}) {
-    this.#onStale = onStale ?? (() => {})
-    this.#onFresh = onFresh ?? (() => {})
-  }
-
-  observe(pub) {
-    this.inputs.add(pub)
-    pub.outputs.add(this)
-  }
-  
-  recordInputsOf(fn) {
-    const oldInputs = this.inputs
-    this.inputs = new Set()
-    runningSubscribers.push(this)
-    let result = fn()
-    runningSubscribers.pop()
-    for (const i of oldInputs.difference(this.inputs)) {
-      i.outputs.delete(this)
+  #recompute() {
+    const oldInputs = this.#inputs
+    this.#inputs = new Set()
+    Reactor.running.push(this)
+    this.latest = this.compute()
+    Reactor.running.pop()
+    for (const i of oldInputs.difference(this.#inputs)) {
+      i.#outputs.delete(this)
     }
-    return result
   }
 
-  inputIsStale() {
-    if (++this.#staleInputs == 1) { this.#onStale() }
+  stale() {
+    if (++this.#staleInputs == 1) {
+      for (const o of this.#outputs) o.stale()
+    }
   }
 
-  inputIsFresh(didChange) {
-    if (didChange) { ++this.#changedInputs }
+  fresh() {
     if (--this.#staleInputs == 0) {
-      this.#onFresh(this.#changedInputs > 0)
-      this.#changedInputs = 0
+      this.#recompute()
+      for (const o of this.#outputs) o.fresh()
     }
-  }
-
-  dispose() {
-    for (const i of this.inputs) { i.outputs.delete(this) }
-    this.inputs.clear()
   }
 }
 ```
 
-Now we can implement our API on top of these.
-
-An `Atom` has no dependencies. It is just a `Publisher`:
+Now implementing our API is pretty trivial.
 
 ```javascript
 export function Atom(value) {
-  const pub = new Publisher(value)
-  const getter = () => pub.observe()
-  getter.peek = () => pub.latest
-  getter.set = (newValue) => {
-    if (newValue == pub.latest) { return }
-    pub.becomeStale()
-    pub.latest = newValue
-    pub.becomeFresh(true)
+  const r = new Reactor(() => value)
+  const atom = () => r.track()
+  atom.peek = () => r.latest
+  atom.set = (newValue) => {
+    r.stale()
+    r.compute = () => newValue
+    r.fresh()
   }
-  getter.alter = (fn) => {
-    getter.set(fn(pub.latest))
+  atom.alter = (transform) => {
+    atom.set(transform(r.latest))
   }
-  getter.dispose = () => pub.dispose()
-  return getter
+  atom.dispose = () => r.dispose()
+  return atom
 }
 ```
 
@@ -479,27 +427,11 @@ A `Calc` is both a `Publisher` and a `Subscriber`:
 
 ```javascript
 export function Calc(compute) {
-  const pub = new Publisher()
-  const sub = new Subscriber({
-    onStale: () => {
-      pub.becomeStale()  // notify our dependents
-    },
-    onFresh: () => {
-      recompute()
-      pub.becomeFresh()
-    }
-  })
-  function recompute() {
-    pub.latest = sub.observeRefsOf(compute)
-  }
-  let getter = () => pub.observe()
-  getter.peek = () => pub.latest
-  getter.dispose = () => {
-    pub.dispose()
-    sub.dispose()
-  }
-  recompute()
-  return getter
+  const r = new Reactor(compute)
+  const calc = () => r.track()
+  calc.peek = () => r.latest
+  calc.dispose = () => r.dispose()
+  return calc
 }
 ```
 
@@ -507,7 +439,7 @@ An `Effect` is just a `Calc` whose value never changes:
 
 ```javascript
 export function Effect(action) {
-  return Calc(() => action())
+  return Calc(() => (action(), NaN))
 }
 ```
 
@@ -528,8 +460,6 @@ let logger = Effect(() => console.log(`x == \${x()}`))
 
 > Is a `Calc` just a special case of an `Effect`? Kind
 of.[^calc-effect-duality]
-
-That's all for `Effect`[^effect-dispose].
 
 -----
 
