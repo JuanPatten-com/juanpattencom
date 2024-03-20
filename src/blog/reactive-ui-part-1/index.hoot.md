@@ -366,7 +366,7 @@ implementing the library.
 Notice that `Atom` and `Calc` share a lot of functionality around
 maintaining the dependency graph and propagating information through
 it. Let's factor that functionality out into a base. We could call it
-"GraphNode", but for the sake of style let's call it... `Reactor`.
+"GraphNode", but for the sake of style let's call it `Reactor`.
 
 <small>
 
@@ -389,22 +389,9 @@ class Reactor {
   #inputs = new Set()
   #outputs = new Set()
 
-  run(fn) {
-    // Execute `fn` and record its inputs.
-    const oldInputs = this.#inputs
-    this.#inputs = new Set()
-    Reactor.running.push(this)
-    let result = fn()
-    Reactor.running.pop()
-    for (const i of oldInputs.difference(this.#inputs)) {
-      i.#outputs.delete(this)
-    }
-    return result
-  }
-
+  // Informs the currently-running reactor that this
+  // is one of its inputs. Returns the latest value.
   observe() {
-    // Inform the currently-running reactor that this
-    // is one of its inputs, and return the latest value.
     let running = Reactor.running.at(-1)
     if (running) {
       this.#outputs.add(running)
@@ -413,19 +400,35 @@ class Reactor {
     return this.latest
   }
 
+  // Records a stale input. If not already stale,
+  // becomes stale and notifies its outputs.
   stale() {
-    // If not stale, become stale and notify dependents.
     if (++this.#staleInputs == 1) {
-      for (const o of this.#outputs) o.stale()
+      for (const o of this.#outputs) { o.stale() }
     }
   }
 
+  // Records a fresh input. If all are fresh,
+  // runs effect (if any) and notifies outputs.
   fresh() {
-    // If all this reactor's inputs are fresh, perform
-    // its effect (if any) and notify its dependents.
     if (--this.#staleInputs == 0) {
       this.effect?.()
-      for (const o of this.#outputs) o.fresh()
+      for (const o of this.#outputs) { o.fresh() }
+    }
+  }
+
+  // Executs `fn` and records its inputs.
+  track(fn) {
+    const oldInputs = this.#inputs
+    this.#inputs = new Set()
+    Reactor.running.push(this)
+    try {
+      return fn()
+    } finally {
+      Reactor.running.pop()
+      for (const i of oldInputs.difference(this.#inputs)) {
+        i.#outputs.delete(this)
+      }
     }
   }
 }
@@ -470,6 +473,8 @@ export function Calc(fn) {
 }
 ```
 
+#### `Effect`
+
 An `Effect` is just a `Calc` that never has a value:
 
 ```javascript
@@ -482,19 +487,19 @@ export function Effect(action) {
 
 ## ~~One~~ Two More Thing*s*...
 
-Our library is now fully functional, but there are a few things I've
-omitted up til now for clarity.
+The library is fully functional, but there are a couple of gaps which
+I've omitted up til now for simplicity's sake.
 
 ### Cancellation / Disposal
 
 How would we stop an `Effect` from running? Right now there's no good
-way. Even if we try[^gc-local-var] to have it garbage-collected, it will
-keep effect-ing. Since our graph uses 2-way references, an `Effect`'s
+way. Even if we try to have it garbage-collected[^gc-local-var], it will
+keep effect-ing. Since our graph uses two-way references, an `Effect`'s
 dependencies will keep it alive even if we try to destroy it. The same
 is true for `Atom` and `Calc` as well.
 
 We need a way to sever the edge between 2 nodes in the graph. Let's add
-the following method to the `Reactor` class definition[^weakmap-deps]:
+the following method to the `Reactor` class definition:
 
 ```javascript
 class Reactor {
@@ -509,7 +514,7 @@ class Reactor {
 }
 ```
 
-And let's expose it on each of our API primitives:
+and expose it on each of our API primitives:
 
 ```javascript
 export function Atom(value) {
@@ -523,7 +528,10 @@ export function Calc(fn) {
   calc.dispose = r.dispose.bind(r)
   return calc
 }
+
+// `Effect` returns a `Calc`, so we don't need to change anything.
 ```
+
 
 Now users of the library can -- for example -- cancel a logger, etc...
 
@@ -552,14 +560,14 @@ cycle[0].set('x')
 </details>
 
 A [cycle](https://en.wikipedia.org/wiki/Cycle_(graph_theory))!
-Fortunately, in our library a cycle does not cause an infinite
+Fortunately in our implementation, a cycle does not cause an infinite
 loop. Instead, it causes stale data to be used (ie. a glitch).
 
-We can easily catch this, though it comes at a cost to performance: when
+We can easily catch this, though it comes at a cost to performance. When
 a `Reactor` is observed, if that same `Reactor` is present in the
 `Reactor.running` stack, then we have a cycle.
 
-Let's add the following lines to the `observe()`:
+Let's add the following lines to `observe()`:
 
 ```javascript
 observe() {
@@ -572,20 +580,73 @@ observe() {
 
 -----
 
-## Conveniences
-
-- Atom::alter
-- label
-
------
-
 ## Optimizations
 
-- TODO: stale != changed
-- TODO: memory savings - atoms don't have inputs
+There are many optimizations we could make to improve speed and memory
+usage, but one in particular calls out to be addressed.
 
+If a `Calc` recalculates but produces the same value as before, all of
+its dependents will still recalculate. Especially since we anticipate
+that the effects of some dependents will be expensive (like UI
+rendering), it would be good to avoid them if possible.
+
+To do this, we'll need to pass some additional information along with
+the `fresh` notification, and a bit of additional logic:
+
+```javascript
+class Reactor {
+  // ...
+
+  // Add a private property
+  #changedInputs = 0
+
+  // ...
+
+  // Add a parameter to fresh(), and a bit of additional logic
+  // to avoid running the effect if no inputs have changed.
+  fresh(didChange = true) {
+    if (didChange) { ++this.#changedInputs }
+    if (--this.#staleInputs == 0) {
+      if ((this.effect != null) && (this.#changedInputs > 0)) {
+        let oldValue = this.latest
+        this.effect?.()
+        didChange = (this.latest != oldValue)
+        this.#changedInputs = 0
+      }
+      for (const o of this.#outputs) { o.fresh(didChange) }
+    }
+  }
+}
+```
+
+Now a `Reactor` will only run its effect if at least one of its inputs
+changed value.
 
 -----
+
+## Conveniences
+
+A pattern that will pop up often is transforming an `Atom`'s value:
+
+```javascript
+let myAtom = Atom(5)
+// ...
+myAtom.set(myAtom.peek() * 2)
+```
+
+Let's make this a bit easier by adding a method to `Atom`:
+
+```javascript
+function Atom(value) {
+  // ...
+  atom.alter = (fn) => atom.set(fn(atom.peek()))
+  return atom
+}
+```
+
+-----
+
+## Naming
 
 **`u`** for micro (because `μ` is harder to type)<br>
 **`rx`** for "reaction" -- a common abbreviation <br>
