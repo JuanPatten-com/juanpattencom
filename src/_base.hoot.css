@@ -1,9 +1,9 @@
-$[set ContentWidth 60ch]
+$[set ContentWidth "round(55ch, 1px)"]
 
 $[set Large "@media screen and (min-width: ${ContentWidth})"]
 $[set Small "@media screen and (max-width: ${ContentWidth})"]
 
-$[+ template HoverTarget {vpad {hpad {}}} +]
+$[+ template AbsCover {vpad {hpad {}}} +]
   $[set hpad $[or $hpad $vpad]]
   position: absolute;
   box-sizing: content-box;

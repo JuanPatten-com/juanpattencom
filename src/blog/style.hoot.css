@@ -1,9 +1,10 @@
 $[> ~/_base.hoot.css]
 
 article {
-  font-family: ui-serif, serif;
-  -webkit-font-smoothing: antialiased;
+  font-family: var(--font-serif);
   hyphens: auto;
+  font-weight: 100;
+  -webkit-font-smoothing: antialiased;
 }
 
 article {
@@ -12,6 +13,7 @@ article {
 
 article :where(h1, h2, h3, h4) {
   hyphens: none;
+  -webkit-font-smoothing: antialiased;
 }
 
 article h1 {
@@ -49,16 +51,59 @@ article :where(p, ul, ol, blockquote, pre, details) {
   margin: 0 0 1rem 0;
 }
 
+article pre:has(> code:first-child) {
+  --pad: 12px;
+  font-size: 0.875em;
+  line-height: 1.5;
+}
+
+article pre:has(> code:first-child)::after {
+  content: '';
+  position: absolute;
+  box-sizing: content-box;
+  top: 0;
+  left: 0;
+  padding: 0 var(--pad);
+  margin-left: calc(-1 * var(--pad));
+  width: 100%;
+  height: 100%;
+  background: var(--bg-code);
+  border-radius: 3.5px;
+  border: 1px solid var(--line-light);
+}
+
+article pre > code {
+  font-weight: 400;
+  padding: var(--pad) 0;
+  -webkit-font-smoothing: auto;
+  font-size: 0.75rem;
+}
+
+$Small {
+  article pre > code {
+    font-size: 80%;
+  }
+}
+
 article details summary {
-  margin-bottom: 0.375rem;
+  background: var(--bg-faint);
+  border: 1px solid var(--line-faint);
+  border-radius: 3.5px;
+  padding: 0.5ex 1.125ch;
+  font-size: 0.875em;
 }
 
 article details p {
   border-left: 2px solid var(--line);
-  padding: 0 3em 0 1em;
-  margin-left: 0.5ch;
+  padding-right: 1em;
+  padding-left: 1em;
+  margin-left: 0.375ch;
   margin-bottom: 0;
   margin-top: 0;
+}
+
+article details p:first-of-type {
+  padding-top: 0.375rem;
 }
 
 article details p:not(:last-of-type) {
@@ -90,8 +135,9 @@ article strong {
   font-weight: 700;
 }
 
-article small {
+article small * {
   font-size: var(--fs--1);
+  line-height: 1.375;
 }
 
 article :not(pre) :where(tt, code) {
@@ -104,9 +150,22 @@ article p code {
   white-space: nowrap;
 }
 
-article .frame75 {
-  width: 75%;
-  margin: 0 auto;
+$Large {
+  article .frame75 {
+    width: 75%;
+    margin-left: auto;
+    margin-right: auto;
+  }
+}
+$Small {
+  article .frame75 {
+    width: 100%;
+  }
+}
+
+article .pin-to-above {
+  margin-top: -1rem;
+  margin-bottom: 1rem;
 }
 
 .footnotes {
@@ -117,7 +176,7 @@ article .frame75 {
 article blockquote {
   opacity: 0.8;
   border-left: 0.375em solid var(--line);
-  padding: 0 3em 0 1em;
+  padding: 0 1em 0 1em;
 }
 
 article blockquote p:first-of-type {
@@ -143,7 +202,7 @@ article sup[id^="fnref"] a {
 
 article sup[id^="fnref"] a::after {
   content: '';
-  $[HoverTarget 0.75ch];
+  $[AbsCover 0.75ch];
   border-radius: 0.5ch;
 }
 
@@ -153,7 +212,7 @@ article sup[id^="fnref"] a:hover::after {
 
 article sup[id^="fnref"] a:hover::before {
   content: '';
-  $[HoverTarget 2.5ch];
+  $[AbsCover 2.5ch];
 }
 
 b.semibold {
@@ -187,11 +246,4 @@ b.semibold {
 .footnote-popover p:last-of-type {
   margin: 0;
 }
-
-
-article code.hljs {
-  padding: 0;
-}
-
-
 
