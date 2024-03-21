@@ -120,6 +120,8 @@ window.initSheet = function() {
       })
 
       // Input DOM setup
+      input.setAttribute('autocorrect', 'off')
+      input.setAttribute('autocapitalize', 'none')
       input.addEventListener('keydown', e => {
         if (e.key == 'Enter') {
           cell.finishEditing()
