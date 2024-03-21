@@ -142,8 +142,8 @@ input, button, textarea, select {
 ** Utils
 */
 
-@media screen and (min-width: var(--content-width)) { .lg-hidden { display: none; } }
-@media screen and (max-width: var(--content-width)) { .sm-hidden { display: none; } }
+@media screen and (min-width: 55ch) { .lg-hidden { display: none; } }
+@media screen and (max-width: 55ch) { .sm-hidden { display: none; } }
 
 
 /**********************************************************************/
@@ -154,7 +154,7 @@ html {
   background: var(--bg);
   font-size: 20px;
 }
-@media screen and (max-width: var(--content-width)) {
+@media screen and (max-width: 55ch) {
   html {
     font-size: 17px;
   }

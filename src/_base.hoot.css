@@ -1,7 +1,7 @@
-$[set ContentWidth "round(var(--content-width), 1px)"]
+$[set ContentWidth "55ch"]
 
-$[set Large "@media screen and (min-width: var(--content-width))"]
-$[set Small "@media screen and (max-width: var(--content-width))"]
+$[set Large "@media screen and (min-width: ${ContentWidth})"]
+$[set Small "@media screen and (max-width: ${ContentWidth})"]
 
 $[set Light "@media (prefers-color-scheme: light)"]
 $[set Dark "@media (prefers-color-scheme: dark)"]

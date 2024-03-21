@@ -24,7 +24,7 @@ input, button, textarea, select {
 */
 
 :root {
-  --content-width: 55ch;
+  --content-width: ${ContentWidth};
 }
 
 
