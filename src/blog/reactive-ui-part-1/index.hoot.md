@@ -847,7 +847,7 @@ Thanks for reading! See you next time.
 
 [^auto-deps-threading]: At least, that's all there is to it in
     single-threaded code. This becomes quite a bit more tricky if we're
-    in a multi-thread environment.
+    in a multithreaded environment.
 
 [^prod-config]: If we were to turn this into a production-ready library,
     we might want to provide a way to disable this check so it can
