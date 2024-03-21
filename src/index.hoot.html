@@ -1,6 +1,9 @@
+$[set bodyClasses {page-index}]
+
 $[+ block content +]
 
 <section id=eg>
+  <aside>Latest Announcement</aside>
   <h2>Everyday Games</h2>
   <p>
   I started Everyday Games in 2023 to create tasteful, smart mobile
@@ -18,18 +21,44 @@ $[+ block content +]
 
 <hr>
 
-<section id=projects>
-  <h2>Side Projects</h2>
+<section id=blog>
+  <aside>Latest Article</aside>
+  <h2><a href="/blog/reactive-ui-part-1">Let's Build a Reactive UI Framework &ndash; Part 1: Data Flow</a></h2>
 
-  <p class=dim>
-  Some tools I’ve made to scratch various itches
+  <div class=blog-post-meta>
+    <div class=pub-date>Published on Wednesday, March 20, 2024</div>
+  </div>
+
+  <p>Reactive dataflow libraries like <a href="https://docs.solidjs.com">Solid</a> and <a href="https://mobx.js.org/README.html">MobX</a> are
+  a joy to use. They can feel like magic in the same way a spreadsheet
+  feels like magic. Change one value and watch the effects ripple through
+  the UI.</p>
+
+  <p>The cool thing is that the concepts behind them are actually pretty
+  simple! In this series of articles, I want to see if we can distill the
+  reactive dataflow paradigm down to its essence, and implement it in
+  a straightforward, readable way while still being correct
+  (&#8220;glitch-free&#8221; as they say) and performant enough to build
+  real apps.</p>
+
+  <p class=blog-post-trunc>&hellip;</p>
+
+  <p>
+  <a class="raquo blog-post-link" href="/blog/reactive-ui-part-1">Keep Reading</a>
   </p>
+</section>
 
-  <div class=project id=proj-hoot>
-    <h3>
+<hr>
+
+<section>
+    <aside>Latest Project</aside>
+    <h2>
       Hoot
-      <a href="https://github.com/jrpat/hoot">Source</a>
     </h3>
+    <p class="project-meta" hbox>
+      <a href="https://github.com/jrpat/hoot/blob/main/README.md">Docs</a>
+      <a href="https://github.com/jrpat/hoot">Source</a>
+    </p>
     <p>
     Hoot is a tool for dynamically generating any kind of textual
     content. It’s simple yet powerful. I’ve used it to generate HTML,
@@ -44,113 +73,9 @@ $[+ block content +]
     <span class=is-to>:</span>
     <a href="https://www.python.org">Python</a>
     </p>
-  </div>
 
-  <div class=project>
-    <h3>
-      jsJot
-      <a href="https://jsjot.pages.dev">App</a>
-      <a href="https://github.com/jrpat/jsjot">Source</a>
-    </h3>
-    <p>
-    jsJot is a “calculator scratchpad” in the vein of
-    <a href="https://soulver.app">Soulver</a>,
-    <a href="https://numi.app">Numi</a>, or
-    <a href="http://calca.io">Calca</a>.
-    But instead of inventing its own language or syntax, it’s just
-    Javascript, with some creature comforts like auto-pairing
-    brackets and parens. The core code is
-    <a href="https://github.com/jrpat/jsjot/blob/556b1be1864739f9e82d40a908fd380912dfb885/jot.js#L25-L41">surprisingly simple</a>,
-    given how useful and convenient it is.
-    </p>
-  </div>
-
-  <div class=project>
-    <h3>
-      Brunicode
-      <a href="https://brunicode.com">App</a>
-      <a href="https://github.com/jrpat/bruni">Source</a>
-    </h3>
-    <p>
-    Brunicode is a wicked-fast unicode browser and searcher.
-    Think “wicked-fast” is an odd way to describe a tool that lists
-    glyphs in a grid? Try rendering the full unicode range at once
-    and watch your browser grind to a halt.
-    </p>
-  </div>
-
-  <div class=project>
-    <h3>
-      PDF BBQ
-      <a href="https://pdfbbq.com">App</a>
-      <a href="https://github.com/jrpat/pdfbbq">Source</a>
-    </h3>
-    <p>
-    PDF BBQ is a side-by-side playground for cooking up PDFs.
-    I’ve used it to &ndash; for instance &ndash; make custom dot-grid and music staff paper,
-    and to generate mazes to print out for my nephew. Powered by
-    <a href="https://pdf-lib.js.org">PDF-Lib</a>.
-    </p>
-  </div>
-
-  <div class=project>
-    <h3>
-      Jif
-      <a href="https://jif.pages.dev">App</a>
-      <a href="https://github.com/jrpat/jif">Source</a>
-    </h3>
-    <p>
-    An elegant text editor for writing prose, in the spirit of
-    <a href="https://ia.net/writer">iA Writer</a>, but with some
-    conveniences like auto-pairing quotes &amp; parens, and “triggers”
-    (like <tt>imap</tt> in vim). Configurable via JavaScript, with a
-    built-in config editor.
-    </p>
-  </div>
-</section>
-
-<hr>
-
-<section id=libs>
-  <h2>Libraries</h2>
-
-  <p class=dim>
-  Some small packages I use to build other things
-  </p>
-
-  <div class=project>
-    <h3>SSVG
-      <a href="https://github.com/jrpat/ssvg">Source</a>
-    </h3>
-    <p>
-    A wafer-thin wrapper around native SVGElement that makes creating/manipulating SVGs as painless as possible
-    </p>
-  </div>
-
-  <div class=project>
-    <h3>
-      Zest
-      <a href="https://github.com/jrpat/zest">Source</a>
-    </h3>
-    <p>
-    A single-header, simple unit testing library for C++
-    </p>
-  </div>
-
-  <div class=project>
-    <h3>
-      Fest
-      <a href="https://github.com/jrpat/fest">Source</a>
-    </h3>
-    <p>
-    A single-header, simple unit testing library for C
-    </p>
-  </div>
-
-  <hr>
-
-  <p>
-  There are more projects on <a href="https://github.com/jrpat">my GitHub</a>.
+  <p class=more>
+    <a class="raquo large-text" href="/projects">More Projects</a>
   </p>
 </section>
 

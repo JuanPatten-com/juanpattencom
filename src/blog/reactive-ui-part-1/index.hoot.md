@@ -1,6 +1,6 @@
 $[set meta {
   title   "Let's Build a Reactive UI Framework -- Part 1: Data Flow"
-  date    2024-03-13
+  date    2024-03-20
 }]
 
 $[set extraStyles {
@@ -54,6 +54,10 @@ $[set toc {
 
 # $[@ $meta title]
 
+<div class=blog-post-meta>
+    <div class=pub-date>Published on Wednesday, March 20, 2024</div>
+</div>
+
 Reactive dataflow libraries like [Solid][solidjs] and [MobX][mobx] are
 a joy to use. They can feel like magic in the same way a spreadsheet
 feels like magic. Change one value and watch the effects ripple through
@@ -76,7 +80,7 @@ article. Everything is vanilla javascript, and the only library used is
 the one we're about to build. You can [view it
 full-screen](./sheet.html) if you'd rather.
 
-<iframe id=sheet-preview src="./sheet.html"></iframe>
+<iframe id=sheet-preview src="/blog/reactive-ui-part-1/sheet.html"></iframe>
 
 <blockquote class=small-text>
 <p><strong>Usage Notes</strong></p>

@@ -135,7 +135,7 @@ $Small {
 }
 
 body {
-  padding: 0 round(5vw, 1px);
+  padding: 0 5vw;
   font-size: 1rem;
   line-height: 1.5;
 }
@@ -183,6 +183,10 @@ a.raquo::after {
   transform: scale(0.75);
 }
 
+a.large-text {
+  font-size: var(--fs-025);
+}
+
 p {
   margin: 0.75em 0;
   line-height: 1.5;
@@ -199,8 +203,8 @@ p {
 #mast {
   text-align: center;
   border-bottom: 1px solid var(--line);
-  padding-top: 1rem;
-  padding-bottom: 1.5rem;
+  padding-top: 0.5rem;
+  padding-bottom: 1rem;
   margin-bottom: 2em;
 }
 
@@ -222,7 +226,7 @@ p {
 }
 
 #main-nav {
-  margin-top: -0.125rem;
+  margin-top: -0.25rem;
   gap: 1.5em;
 }
 
@@ -250,7 +254,14 @@ p {
 }
 
 section {
-  margin-bottom: 3rem;
+  margin-bottom: 2.5rem;
+}
+
+section aside {
+  font-size: var(--fs--1);
+  color: var(--text-3);
+  font-variant: all-small-caps;
+  letter-spacing: 0.05ch;
 }
 
 .dim {
@@ -267,7 +278,7 @@ section {
 
 .project {
   margin-top: 1.5em;
-  margin-bottom: 3em;
+  margin-bottom: 2em;
 }
 
 .project h3 a {
@@ -275,6 +286,23 @@ section {
   font-weight: 400;
   font-variant: all-small-caps;
   margin-left: 1em;
+}
+
+.project-meta {
+  gap: 1em;
+  font-weight: 600;
+}
+
+.more {
+  border-top: 1px solid var(--line);
+  display: inline-block;
+  padding-right: 10ch;
+  margin-top: 1em;
+  padding-top: 1em;
+}
+
+.more a {
+  font-weight: 600;
 }
 
 tt, code {
@@ -330,4 +358,25 @@ footer a {
   color: var(--text-secondary);
 }
 
+
+/**********************************************************************/
+
+.blog-post-link {
+  font-size: var(--fs-025);
+  font-weight: 600;
+}
+
+.blog-post-trunc {
+  margin-top: -0.5rem;
+  margin-bottom: 0.5rem;
+  color: var(--text-2);
+}
+
+.blog-post-meta {
+  font-size: var(--fs--2);
+  color: var(--text-2);
+  margin-bottom: 0.625rem;
+  margin-top: -0.125rem;
+  font-style: italic;
+}
 

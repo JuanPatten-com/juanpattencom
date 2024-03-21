@@ -1,0 +1,37 @@
+$[set bodyClasses {blog-index}]
+$[set extraStyles {
+  <link rel=stylesheet href="./style.css">
+}]
+
+$[+ block content +]
+
+<article>
+  <h2><a href="/blog/reactive-ui-part-1">Let's Build a Reactive UI Framework &ndash; Part 1: Data Flow</a></h2>
+
+  <div class=blog-post-meta>
+    <div class=pub-date>Published on Wednesday, March 20, 2024</div>
+  </div>
+
+  <p>Reactive dataflow libraries like <a href="https://docs.solidjs.com">Solid</a> and <a href="https://mobx.js.org/README.html">MobX</a> are
+  a joy to use. They can feel like magic in the same way a spreadsheet
+  feels like magic. Change one value and watch the effects ripple through
+  the UI.</p>
+
+  <p>The cool thing is that the concepts behind them are actually pretty
+  simple! In this series of articles, I want to see if we can distill the
+  reactive dataflow paradigm down to its essence, and implement it in
+  a straightforward, readable way while still being correct
+  (&#8220;glitch-free&#8221; as they say) and performant enough to build
+  real apps.</p>
+
+  <p class=blog-post-trunc>&hellip;</p>
+
+  <p>
+  <a class="raquo blog-post-link" href="/blog/reactive-ui-part-1">Keep Reading</a>
+  </p>
+</article>
+
+$[--]
+
+$[> ~/_base.hoot.html]
+
