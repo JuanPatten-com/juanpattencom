@@ -179,6 +179,34 @@ article .pin-to-above {
 .footnotes {
   font-size: var(--fs--2);
   hyphens: auto;
+  border-top: 1em solid var(--line);
+  padding-top: 1.5em;
+}
+
+.footnotes::before {
+  content: 'Footnotes';
+  font-variant: all-small-caps;
+  color: var(--text-2);
+  position: absolute;
+  top: 0;
+  left: 0;
+  width: 100%;
+  text-align: center;
+  line-height: 1em;
+  margin-top: -1.125em;
+  letter-spacing: 0.25ch;
+}
+
+.footnotes li {
+  margin-bottom: 0.5em;
+}
+
+.footnotes li br+br {
+  display: none;
+}
+
+.footnotes > hr {
+  display: none;
 }
 
 article blockquote {

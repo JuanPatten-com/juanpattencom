@@ -400,6 +400,13 @@ $[contentsOf ./depgraph-step3.svg]
 $[contentsOf ./depgraph-step4.svg]
 </div>
 
+And that's it. Now all the `Calc`s that were affected by the change have
+recalculated, and we're awaiting another change.
+
+<div class="frame75 pin-to-above">
+$[contentsOf ./depgraph-start.svg]
+</div>
+
 #### Dynamic Dependencies
 
 It's worth noting that when a `Calc` recalculates, it might end up with
@@ -711,12 +718,25 @@ function Atom(value) {
 }
 ```
 
+Now we can, for example:
+
+```javascript
+let myAtom = Atom(10)
+myAtom.alter(x => x * 2)  // value is now 20
+```
+
+This is silly in such a short example, but it ends up being used a lot
+in real-world applications.
+
 -----
 
-## Naming
+## That's It
 
-Oh, right --- we forgot the most crucial thing. If we're going to make
-a library, it has to have a clever name. Let's see...
+That's it for the first article in the seri--- *wait* --- we forgot the
+most crucial thing! If we're going to make a library, it has to have
+a clever name 😉
+
+Let's see...
 
 - It's small. Micro, even. `µ` is too hard to type, so **`u`** then.
 - It's reactive, so it's almost obligatory to use **`rx`** in the name.
@@ -727,9 +747,26 @@ a library, it has to have a clever name. Let's see...
 And it's ... *type&#x200a;type&#x200a;type* ... available on GitHub, so
 -- ✔ that'll do.
 
-☞ &nbsp;<b class=semibold><a
+<b class=semibold><a
 href="https://github.com/jrpat/urx.js">https://github.com/jrpat/urx.js</a></b>
-&nbsp;☜
+
+### That's Really It
+
+OK, that's all for this installment. We've got a usable, glitch-free,
+performant reactive dataflow library. We can use it to build real apps,
+like the [spreadsheet demo](./sheet.html) from the beginning of the
+article.
+
+But as you build with it, you'll quickly realize that it still leaves
+a lot to be desired: it's not easy to combine `Atom`s into nested
+structures, for example. It's a bit clunky to work with `Atom`s whose
+values are lists, for another.
+
+And we have all this derived state, but no way to declaratively code our
+UI, so we end up doing a lot of manual DOM manipulation (check out the
+[code for the spreadsheet demo](./sheet.js) for example).
+
+We'll address all those and more in due time.
 
 -----
 
@@ -739,8 +776,9 @@ In the next few posts in this series, we'll use `urx.js` as a foundation
 on which to build:
 
 - Larger-scale state management with nested stores that are
-  automatically "react-ified", with some additional ergonomics
-- UI rendering using reactive state (and batch updates) to drive
+  automatically "react-ified", plus a few new ideas for managing state
+  now that it's getting more complex
+- Reactive UI rendering using batch updates ("transactions") to drive
   effecient DOM updates
 
 -----
@@ -751,6 +789,12 @@ If you liked this post, you might enjoy reading:
 
 - [Out of the Tar Pit][tarpit]
 - [Build Systems à la Carte][bs-ala-carte]
+
+-----
+
+Thanks for reading! See you next time.
+
+--- *Juan*
 
 <br>
 
@@ -780,11 +824,12 @@ If you liked this post, you might enjoy reading:
     when it changes).
 
 [^calc-effect-duality]: We could say that a `Calc` is just an `Effect`
-    whose action is to recompute & store its value.  Or is it the other
+    whose action is to recompute & store its value. Or is it the other
     way around? Maybe an `Effect` is just a `Calc` whose value is always
-    `undefined`.
-    Both are valid ways of looking at it, but in our implementation the
-    latter is actually true.
+    `undefined`.<br><br>Both are valid ways of looking at it, and in our
+    implementation, in fact both are true. An `Effect` *is* just
+    a `Calc`. And a `Calc` is just a "reactor" whose effect is to
+    recompute and store its value.
 
 [^atoms-dont-have-inputs]: Since `Atom`s don't depend on anything, no
     other `Atom` could possibly change.
@@ -808,10 +853,10 @@ If you liked this post, you might enjoy reading:
     helpfully catch bugs in development but not cost us anything in
     the shipped product.
 
-[^identity-equality]: We'll use `===` equality, but it might make sense
+[^identity-equality]: We use `===` equality, but it might make sense
     to use
     [same-value-zero](https://developer.mozilla.org/en-US/docs/Web/JavaScript/Equality_comparisons_and_sameness#same-value-zero_equality)
-    equality like many Javascript API's (such as `Map` and `Set`) do.
+    equality like many Javascript builtins (such as `Map` and `Set`) do.
 
 [tarpit]: https://curtclifton.net/papers/MoseleyMarks06a.pdf
 [reactjs]: https://react.dev
