@@ -4,24 +4,39 @@ $[set meta {
 }]
 
 $[set extraStyles {
-    <style>
-        @media (prefers-color-scheme: light) {
-            .depgraph-stroke {
-                stroke: #1d1d1d;
-            }
-            .depgraph-fill {
-                fill: #1d1d1d;
-            }
-        }
-        @media (prefers-color-scheme: dark) {
-            .depgraph-stroke {
-                stroke: rgb(225 225 225);
-            }
-            .depgraph-fill {
-                fill: rgb(225 225 225);
-            }
-        }
-    </style>
+  <style>
+    @media (prefers-color-scheme: light) {
+      .depgraph-stroke {
+        stroke: #1d1d1d;
+      }
+      .depgraph-fill {
+        fill: #1d1d1d;
+      }
+    }
+    @media (prefers-color-scheme: dark) {
+      .depgraph-stroke {
+        stroke: rgb(225 225 225);
+      }
+      .depgraph-fill {
+        fill: rgb(225 225 225);
+      }
+    }
+
+    #sheet-preview {
+      border: none;
+      width: 100%;
+      height: 15em;
+    }
+
+    #sheet-preview.expanded {
+      position: fixed;
+      bottom: 0;
+      left: 0;
+      width: 100%;
+      height: 50%;
+      z-index: 999;
+    }
+  </style>
 }]
 
 $[set toc {
@@ -39,27 +54,55 @@ $[set toc {
 
 # $[@ $meta title]
 
-```
-{{ WRITE AN INTRO }}
-```
+Reactive dataflow libraries like [Solid][solidjs] and [MobX][mobx] are
+a joy to use. They can feel like magic in the same way a spreadsheet
+feels like magic. Change one value and watch the effects ripple through
+the UI.
 
-The primary goal is to distill the idea down to its essence and see how
-simple we can make the implementation. The core ideas of the system is
-easy to describe in plain language, but many implementations suffer from
-confusing implementation. Let's see if we can do better!
+The cool thing is that the concepts behind them are actually pretty
+simple! In this series of articles, I want to see if we can distill the
+reactive dataflow paradigm down to its essence, and implement it in
+a straightforward, readable way while still being correct
+("glitch-free"[^glitches] as they say) and performant enough to build
+real apps.
 
-The other primary goal is correctness. Some implementations suffer from
-"glitches"[^glitches], but our implementation will be glitch-free.
+We'll start by building a simple and correct library, and then we'll
+tackle some low-hanging optimization opportunities.
 
-In the initial implementation, speed is barely considered, and some
-redundant calculations are not eliminated. In the
-[Optimizations](#optimizations) section, we'll address some low-hanging
-performance fruit.
+## A Preview
+
+Here's a demo of what we'll be able to make at the end of the
+article. Everything is vanilla javascript, and the only library used is
+the one we're about to build. You can [view it
+full-screen](./sheet.html) if you'd rather.
+
+<iframe id=sheet-preview src="./sheet.html"></iframe>
+
+<blockquote class=small-text>
+<p><strong>Usage Notes</strong></p>
+<ul>
+  <li>Cell formulas are just Javascript expressions.</li>
+  <li>Inside a cell's formula, you can refer to other cells by name, ie
+  <tt>a4</tt>. While editing, clicking another cell will insert its
+  name.
+  </li>
+  <li>Press <tt>Enter</tt> or <tt>Tab</tt> to finish editing a cell.
+  </li>
+  <li><tt>Math</tt> functions are exposed directly. Do
+  <tt>abs(a4)</tt>, not <del><tt>Math.abs(a4)</tt></del>.
+  </li>
+  <li>If a cell's formula results in an error, the cell will show
+  a ‼️ which you can hover over to see the error.
+  </li>
+  <li>The ☰ icon opens a sidebar where you can resize the grid.
+  </li>
+</ul>
+</blockquote>
+
 
 ## The Core Idea
 
-The goal of a reactive system is to simplify the way we handle two
-basic types of data[^tarpit]:
+There are basically two types of data[^tarpit] in any system:
 
 - __*Derived data*__ which can be calculated from other data in the system.
 - __*Input data*__ which cannot. We have to read/store this data.
@@ -119,14 +162,16 @@ spreadsheets.
 
 ### Derived Data, Flowing {#derived-data-flowing}
 
-The goal of a "reactive" framework is that we only store input data as
-mutable state. Everything else is derived from that, and updates
-automatically when we change the input data.
+The goal of a reactive dataflow framework is that the only mutable state
+in our app is input data. Everything else is derived from that, and
+updates automatically when the inputs change.
 
-The core idea behind libraries like [React][reactjs] is that <b
-class=semibold>the entire user interface is derived data</b>.
+The idea behind libraries like [React][reactjs] is that <b
+class=semibold>the entire UI is derived data</b>.
 
 ### Glossary
+
+I'll use the following terms throughout:
 
 - An **`Atom`** is an individual piece of input data.
 - A **`Calc`** is an individual piece of derived data.
@@ -162,7 +207,7 @@ Setting an `Atom`'s value will cause all its dependents to recalculate:
 x.set(10)  // x's value is 10
 ```
 
-To get the current value of an `Atom`, we call it like a function:
+To get the current value of an `Atom`, call it like a function:
 
 ```javascript
 x()  // => 20
@@ -187,8 +232,7 @@ let xSquared = Calc(() => x() ** 2)
 <sup>Notice that this `Calc` observes the value of the `Atom` we created
 earlier.</sup>
 
-To get the current value of a `Calc`, we call it like
-a function:
+To get the current value of a `Calc`, call it like a function:
 
 ```javascript
 xSquared()  // => 400
@@ -271,7 +315,7 @@ Wait… is my name Oliver? Mary Oliver?</pre>
 ## Library Implementation
 
 Now that we've got an API in mind, let's start working on an
-implementation.
+implementation. There are two main procedures to get our head around.
 
 ### Automatic Dependencies
 
@@ -279,10 +323,17 @@ Part of the "magic" feeling of a reactive framework is that it we never
 have to explicitly specify dependencies. The system figures them out for
 us. This is not only convenient, but important.[^manual-deps]
 
-It's surprisingly simple to do: It keeps a stack of currently-running
-observers, and any time a fact's value is read, it looks to see if there
-is a currently running observer. If so, it adds itself as an input to
-that observer.
+And it's surprisingly simple:
+
+- We keep a stack of currently-running "observers" (ie. `Calc`
+  & `Effect`).
+- When a `Calc` or `Effect` begins to execute, it pushes itself onto
+  the stack. When it finishes, it pops itself off.
+- Any time a fact's value is read, it looks on the top of the stack to
+  see if there is a currently running observer. If so, it registers
+  itself as a dependency of that observer.
+
+That's all there is to it.[^auto-deps-threading]
 
 
 ### Reacting to Changes
@@ -295,7 +346,7 @@ Every time an `Atom` is updated, we need to figure out two things:
    recalculate if and only if *all* of its dependencies are __*fresh*__
    (ie. not stale).
 
-#### The Algorithm
+#### The Algorithm[^mobx-algo] {#the-algorithm}
 
 Imagine a dependency graph that looks like this:
 
@@ -368,13 +419,18 @@ maintaining the dependency graph and propagating information through
 it. Let's factor that functionality out into a base. We could call it
 "GraphNode", but for the sake of style let's call it `Reactor`.
 
+In addition to its graph management duties, a Reactor has a `latest`
+value, and -- optionally -- an `effect` which will run when its
+dependencies become fresh.
+
 <small>
 
-> **Note**
+> **A Note on Nomenclature**
 >
-> I use the term "input" and "output" here instead of "dependency" and
-> "dependent", respectively. I find the latter make the code a bit more
-> obvious and intuitive. The former tend to blur together on the page.
+> I use the terms "input" and "output" here instead of "dependency" and
+> "dependent", respectively. I find the latter tend to blur together on
+> the page, while the former make things a bit more obvious and
+> intuitive.
 
 </small>
 
@@ -459,8 +515,8 @@ export function Atom(value) {
 
 #### `Calc`
 
-A `Calc` is a `Reactor` whose effect is to set the reactor's value to
-the result of its calculation.
+A `Calc` is a `Reactor` whose effect is to set the reactor's `latest`
+value to the result of its calculation.
 
 ```javascript
 export function Calc(fn) {
@@ -494,11 +550,12 @@ I've omitted up til now for simplicity's sake.
 
 How would we stop an `Effect` from running? Right now there's no good
 way. Even if we try to have it garbage-collected[^gc-local-var], it will
-keep effect-ing. Since our graph uses two-way references, an `Effect`'s
-dependencies will keep it alive even if we try to destroy it. The same
-is true for `Atom` and `Calc` as well.
+keep effect-ing. Since dependencies keep a reference to their
+dependents, and vice-versa, an `Effect`'s dependencies will keep it
+alive even if we try to destroy it. The same is true for `Atom` and
+`Calc` as well.
 
-We need a way to sever the edge between 2 nodes in the graph. Let's add
+We need a way to sever the edge between nodes in the graph. Let's add
 the following method to the `Reactor` class definition:
 
 ```javascript
@@ -657,6 +714,18 @@ It's available on GitHub, so... ✔ that'll do.
 
 -----
 
+## Next Up
+
+In the next few posts in this series, we'll use `urx.js` as a foundation
+on which to build:
+
+- Larger-scale state management with nested stores that are
+  automatically "react-ified" and seamlessly updated
+- UI rendering using reactive state (and batch updates) to drive
+  effecient DOM updates
+
+-----
+
 If you liked this post, you might be interested in:
 
 - [Out of the Tar Pit][tarpit]
@@ -686,18 +755,24 @@ If you liked this post, you might be interested in:
     way around? Maybe an `Effect` is just a `Calc` whose value is always
     `undefined`.
     Both are valid ways of looking at it, but in our implementation the
-    latter is actually true. And that comes with a benefit: we can
-    easily model serial processes via cascading `Effect`s.
+    latter is actually true.
 
 [^atoms-dont-have-inputs]: Since `Atom`s don't depend on anything, no
     other `Atom` could possibly change.
 
-[^gc-local-var]: By -- for example -- creating an `Effect` as a local
-    variable in a function and then letting it go out of scope.
+[^gc-local-var]: By -- for example -- creating it as a local variable in
+    a function and then letting it go out of scope.
 
 [^glitches]: A "glitch" is reactive jargon for an inconsistency in
     derived state. <a class=raquo
     href="https://stackoverflow.com/a/25141234/166874">More Info</a>
+
+[^mobx-algo]: The original idea for this algorithm comes from [this post
+    about MobX][mobx-algo]. I'm sorry in advance for the color scheme 🤦
+
+[^auto-deps-threading]: At least, that's all there is to it in
+    single-threaded code. This becomes quite a bit more tricky if we're
+    in a multi-thread environment.
 
 -----
 
@@ -706,3 +781,6 @@ If you liked this post, you might be interested in:
 [pure-function]: https://en.wikipedia.org/wiki/Pure_function
 [topo-sort]: https://en.wikipedia.org/wiki/Topological_sorting
 [bs-ala-carte]: https://www.microsoft.com/en-us/research/uploads/prod/2018/03/build-systems.pdf
+[solidjs]: https://docs.solidjs.com
+[mobx]: https://mobx.js.org/README.html
+[mobx-algo]: https://medium.com/hackernoon/becoming-fully-reactive-an-in-depth-explanation-of-mobservable-55995262a254#71b1

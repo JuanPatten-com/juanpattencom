@@ -1,7 +1,10 @@
-$[set ContentWidth "round(55ch, 1px)"]
+$[set ContentWidth "round(var(--content-width), 1px)"]
 
-$[set Large "@media screen and (min-width: ${ContentWidth})"]
-$[set Small "@media screen and (max-width: ${ContentWidth})"]
+$[set Large "@media screen and (min-width: var(--content-width))"]
+$[set Small "@media screen and (max-width: var(--content-width))"]
+
+$[set Light "@media (prefers-color-scheme: light)"]
+$[set Dark "@media (prefers-color-scheme: dark)"]
 
 $[+ template AbsCover {vpad {hpad {}}} +]
   $[set hpad $[or $hpad $vpad]]

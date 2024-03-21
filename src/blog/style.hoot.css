@@ -4,7 +4,6 @@ article {
   font-family: var(--font-serif);
   hyphens: auto;
   font-weight: 100;
-  -webkit-font-smoothing: antialiased;
 }
 
 article {
@@ -24,28 +23,28 @@ article h1 {
 article h1 code { font-weight: 700; }
 
 article h2 {
-  font-weight: 600;
+  font-weight: 700;
   font-size: var(--fs-1);
-  margin-top: 1.25em;
+  margin-top: 1.375em;
   margin-bottom: 1rem;
 }
-article h2 code { font-weight: 600; }
+article h2 code { font-weight: 700; }
 
 article h3 {
   font-size: var(--fs-05);
-  font-weight: 600;
-  margin-top: 1.25em;
+  font-weight: 700;
+  margin-top: 1.375em;
   margin-bottom: 1rem;
 }
-article h3 code { font-weight: 600; }
+article h3 code { font-weight: 700; }
 
 article h4 {
   font-size: var(--fs-025);
-  font-weight: 600;
-  margin-top: 1em;
+  font-weight: 700;
+  margin-top: 1.375em;
   margin-bottom: 1rem;
 }
-article h4 code { font-weight: 600; }
+article h4 code { font-weight: 700; }
 
 article :where(p, ul, ol, blockquote, pre, details) {
   margin: 0 0 1rem 0;
@@ -131,11 +130,15 @@ article img {
   height: auto;
 }
 
-article strong {
-  font-weight: 700;
+$Light {
+  article strong { font-weight: 700; }
+}
+$Dark {
+  article strong { font-weight: 800; }
 }
 
-article small * {
+article small *,
+article blockquote.small-text * {
   font-size: var(--fs--1);
   line-height: 1.375;
 }
@@ -183,11 +186,11 @@ article blockquote p:first-of-type {
   margin-bottom: 0;
 }
 
-article blockquote p:not(:last-of-type) {
+article blockquote p:not(:last-child) {
   margin-bottom: 0.5em;
 }
 
-article blockquote p:first-of-type:not(:last-of-type) {
+article blockquote p:first-of-type:not(:last-child) {
   font-variant: all-small-caps;
 }
 

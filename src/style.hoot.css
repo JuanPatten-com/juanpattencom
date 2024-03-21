@@ -20,6 +20,17 @@ input, button, textarea, select {
 
 /**********************************************************************/
 /*
+** Content
+*/
+
+:root {
+  --content-width: 55ch;
+}
+
+
+
+/**********************************************************************/
+/*
 ** Colors
 */
 
@@ -73,9 +84,9 @@ input, button, textarea, select {
 */
 
 :root {
-  --font-sans: ui-sans-serif, sans-serif;
+  --font-sans: ui-sans-serif, system-ui, sans-serif;
   --font-mono: ui-monospace, monospace;
-  --font-serif: ui-serif, serif;
+  --font-serif: Charter, 'Bitstream Charter', 'Sitka Text', Cambria, serif;
 }
 
 
@@ -91,9 +102,9 @@ input, button, textarea, select {
   --fs-0: 1rem;
   --fs-1: 1.75rem;
   --fs-2: 2.25rem;
-  --fs-3: 3.75rem;
-  --fs-4: 4.25rem;
-  --fs-5: 4.75rem;
+  --fs-3: 2.75rem;
+  --fs-4: 3.25rem;
+  --fs-5: 3.75rem;
 
   --fs-05: $(1 + (1.75 - 1) / 2)rem;
   --fs-025: $(1 + (1.75 - 1) / 4)rem;
@@ -115,7 +126,7 @@ html {
   font-family: var(--font-sans);
   color: var(--text);
   background: var(--bg);
-  font-size: 18px;
+  font-size: 20px;
 }
 $Small {
   html {
@@ -180,7 +191,7 @@ p {
 
 #content, #mast {
   width: 100%;
-  max-width: ${ContentWidth};
+  max-width: var(--content-width);
   margin: 0 auto;
 }
 
