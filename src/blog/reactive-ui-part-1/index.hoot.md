@@ -316,7 +316,7 @@ Wait… is my name Oliver? Mary Oliver?</code></pre>
 
 -----
 
-## Library Implementation
+## Implementation Concepts
 
 Now that we've got an API in mind, let's start working on an
 implementation. There are two main procedures to get our head around.
@@ -418,12 +418,17 @@ end up with a graph like this:
 $[contentsOf ./depgraph-final.svg]
 </div>
 
-### And Now, Some Code
+If so, the next time `A1` changes, `C7` will not be recalculated because
+it no longer transitively depends on the value of `A1`.
 
-Now we have a sense of how things should work, and we can start
-implementing the library.
+-----
 
-#### Graph Management
+## And Now, Some Code
+
+Now we have a sense of how things should work, and we can start making
+the ideas concrete in code.
+
+### Graph Management
 
 Notice that `Atom` and `Calc` share a lot of functionality around
 maintaining the dependency graph and propagating information through
@@ -501,6 +506,8 @@ class Reactor {
 }
 ```
 
+### The API
+
 Implementing our API on top of `Reactor` is straightforward.
 
 #### `Atom`
@@ -526,8 +533,8 @@ export function Atom(value) {
 
 #### `Calc`
 
-A `Calc` is a `Reactor` whose effect is to set the reactor's `latest`
-value to the result of its calculation.
+A `Calc` is a `Reactor` whose effect is to set its own `latest` value to
+the result of its calculation.
 
 ```javascript
 export function Calc(fn) {
@@ -542,9 +549,9 @@ export function Calc(fn) {
 
 #### `Effect`
 
-An `Effect` is just a `Reactor` that exists only for its effect. Instead
-of repeating code from `Calc`, we'll just return a `Calc` whose value is
-always `undefined`.
+An `Effect` is a `Reactor` that exists only for its effect. Instead of
+repeating code from `Calc`, we'll return a `Calc` whose value is always
+`undefined`.
 
 ```javascript
 export function Effect(action) {
@@ -554,7 +561,7 @@ export function Effect(action) {
 
 -----
 
-## ~~One~~ Two More Thing*s*...
+## ~~One~~ Two More Thing&#x200a;*s*...
 
 The library is fully functional, but there are a couple of gaps which
 I've omitted up til now for simplicity's sake.

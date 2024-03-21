@@ -268,7 +268,7 @@ The name's still Oliver? Mary Oliver?
 Wait… is my name Oliver? Mary Oliver?</code></pre>
 </details>
 <hr/>
-<h2 id="library-implementation">Library Implementation</h2>
+<h2 id="implementation-concepts">Implementation Concepts</h2>
 <p>Now that we&#8217;ve got an API in mind, let&#8217;s start working on an
 implementation. There are two main procedures to get our head around.</p>
 <h3 id="automatic-dependencies">Automatic Dependencies</h3>
@@ -2539,10 +2539,13 @@ end up with a graph like this:</p>
 </svg>
 
 </div>
-<h3 id="and-now-some-code">And Now, Some Code</h3>
-<p>Now we have a sense of how things should work, and we can start
-implementing the library.</p>
-<h4 id="graph-management">Graph Management</h4>
+<p>If so, the next time <code>A1</code> changes, <code>C7</code> will not be recalculated because
+it no longer transitively depends on the value of <code>A1</code>.</p>
+<hr/>
+<h2 id="and-now-some-code">And Now, Some Code</h2>
+<p>Now we have a sense of how things should work, and we can start making
+the ideas concrete in code.</p>
+<h3 id="graph-management">Graph Management</h3>
 <p>Notice that <code>Atom</code> and <code>Calc</code> share a lot of functionality around
 maintaining the dependency graph and propagating information through
 it. Let&#8217;s factor that functionality out into a base. We could call it
@@ -2613,6 +2616,7 @@ intuitive.</p>
   }
 }
 </code></pre>
+<h3 id="the-api">The API</h3>
 <p>Implementing our API on top of <code>Reactor</code> is straightforward.</p>
 <h4 id="section-3"><code>Atom</code></h4>
 <p>An <code>Atom</code> is a <code>Reactor</code> that doesn&#8217;t have an effect. Notice that its
@@ -2632,8 +2636,8 @@ algorithm</a>.</p>
 }
 </code></pre>
 <h4 id="section-4"><code>Calc</code></h4>
-<p>A <code>Calc</code> is a <code>Reactor</code> whose effect is to set the reactor&#8217;s <code>latest</code>
-value to the result of its calculation.</p>
+<p>A <code>Calc</code> is a <code>Reactor</code> whose effect is to set its own <code>latest</code> value to
+the result of its calculation.</p>
 <pre><code class="language-javascript">export function Calc(fn) {
   const r = new Reactor()
   r.effect = () =&#62; r.latest = r.run(fn)
@@ -2644,15 +2648,15 @@ value to the result of its calculation.</p>
 }
 </code></pre>
 <h4 id="section-5"><code>Effect</code></h4>
-<p>An <code>Effect</code> is just a <code>Reactor</code> that exists only for its effect. Instead
-of repeating code from <code>Calc</code>, we&#8217;ll just return a <code>Calc</code> whose value is
-always <code>undefined</code>.</p>
+<p>An <code>Effect</code> is a <code>Reactor</code> that exists only for its effect. Instead of
+repeating code from <code>Calc</code>, we&#8217;ll return a <code>Calc</code> whose value is always
+<code>undefined</code>.</p>
 <pre><code class="language-javascript">export function Effect(action) {
   return Calc(() =&#62; { action() })
 }
 </code></pre>
 <hr/>
-<h2 id="one-two-more-things"><del>One</del> Two More Thing<em>s</em>&#8230;</h2>
+<h2 id="one-two-more-things"><del>One</del> Two More Thing&#8202;<em>s</em>&#8230;</h2>
 <p>The library is fully functional, but there are a couple of gaps which
 I&#8217;ve omitted up til now for simplicity&#8217;s sake.</p>
 <h3 id="cancellation-disposal">Cancellation &#47; Disposal</h3>
