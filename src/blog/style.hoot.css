@@ -181,6 +181,7 @@ article .pin-to-above {
   hyphens: auto;
   border-top: 1em solid var(--line);
   padding-top: 1.5em;
+  margin-top: 5em;
 }
 
 .footnotes::before {
