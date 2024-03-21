@@ -175,7 +175,7 @@ I'll use the following terms throughout:
 
 - An **`Atom`** is an individual piece of input data.
 - A **`Calc`** is an individual piece of derived data.
-- `Atom` and a `Calc` are both a kind of __*fact*__.
+- `Atom` and `Calc` are both a kind of __*fact*__.
 - If a `Calc` uses the value of a fact, it __*observes*__ that
   fact. When the observed fact changes, the `Calc` will automatically
   re-calculate.
@@ -551,9 +551,8 @@ I've omitted up til now for simplicity's sake.
 How would we stop an `Effect` from running? Right now there's no good
 way. Even if we try to have it garbage-collected[^gc-local-var], it will
 keep effect-ing. Since dependencies keep a reference to their
-dependents, and vice-versa, an `Effect`'s dependencies will keep it
-alive even if we try to destroy it. The same is true for `Atom` and
-`Calc` as well.
+dependents, an `Effect` will stay it alive even if we try to destroy
+it. The same is true for `Atom` and `Calc` as well.
 
 We need a way to sever the edge between nodes in the graph. Let's add
 the following method to the `Reactor` class definition:
@@ -620,9 +619,10 @@ A [cycle](https://en.wikipedia.org/wiki/Cycle_(graph_theory))!
 Fortunately in our implementation, a cycle does not cause an infinite
 loop. Instead, it causes stale data to be used (ie. a glitch).
 
-We can easily catch this, though it comes at a cost to performance. When
-a `Reactor` is observed, if that same `Reactor` is present in the
-`Reactor.running` stack, then we have a cycle.
+We can easily catch this, though it comes at a cost to
+performance[^prod-config]: whenever a `Reactor` is observed, if that
+same `Reactor` is present in the `Reactor.running` stack, then we have
+a cycle.
 
 Let's add the following lines to `observe()`:
 
@@ -642,13 +642,16 @@ observe() {
 There are many optimizations we could make to improve speed and memory
 usage, but one in particular calls out to be addressed.
 
+### Minimizing Recalculations
+
 If a `Calc` recalculates but produces the same value as before, all of
-its dependents will still recalculate. Especially since we anticipate
-that the effects of some dependents will be expensive (like UI
-rendering), it would be good to avoid them if possible.
+its dependents will still recalculate, even though they don't need
+to. It would be good to avoid them if possible, especially because we
+anticipate that the effects of some dependents (like UI rendering) will
+be expensive.
 
 To do this, we'll need to pass some additional information along with
-the `fresh` notification, and a bit of additional logic:
+the `fresh` notification, and add a bit of additional logic:
 
 ```javascript
 class Reactor {
@@ -661,7 +664,7 @@ class Reactor {
 
   // Add a parameter to fresh(), and a bit of additional logic
   // to avoid running the effect if no inputs have changed.
-  fresh(didChange = true) {
+  fresh(didChange) {
     if (didChange) { ++this.#changedInputs }
     if (--this.#staleInputs == 0) {
       if ((this.effect != null) && (this.#changedInputs > 0)) {
@@ -677,7 +680,7 @@ class Reactor {
 ```
 
 Now a `Reactor` will only run its effect if at least one of its inputs
-changed value.
+changed value[^identity-equality].
 
 -----
 
@@ -705,12 +708,21 @@ function Atom(value) {
 
 ## Naming
 
-**`u`** for micro (because `μ` is harder to type)<br>
-**`rx`** for "reaction" -- a common abbreviation <br>
-**`.js`** for
-... you got this one.
+Oh, right --- we forgot the most crucial thing. If we're going to make
+a library, it has to have a clever name. Let's see...
 
-It's available on GitHub, so... ✔ that'll do.
+- It's small. Micro, even. `µ` is too hard to type, so **`u`** then.
+- It's reactive, so it's almost obligatory to use **`rx`** in the name.
+- And of course, it's Javascript isn't it. Yes, we'll have to **`.js`**.
+
+`urx.js` --- not bad.
+
+And it's ... *type&#x200a;type&#x200a;type* ... available on GitHub, so
+-- ✔ that'll do.
+
+☞ &nbsp;<b class=semibold><a
+href="https://github.com/jrpat/urx.js">https://github.com/jrpat/urx.js</a></b>
+&nbsp;☜
 
 -----
 
@@ -720,18 +732,22 @@ In the next few posts in this series, we'll use `urx.js` as a foundation
 on which to build:
 
 - Larger-scale state management with nested stores that are
-  automatically "react-ified" and seamlessly updated
+  automatically "react-ified", with some additional ergonomics
 - UI rendering using reactive state (and batch updates) to drive
   effecient DOM updates
 
 -----
 
-If you liked this post, you might be interested in:
+## Recommendations
+
+If you liked this post, you might enjoy reading:
 
 - [Out of the Tar Pit][tarpit]
 - [Build Systems à la Carte][bs-ala-carte]
 
------
+<br>
+
+
 
 [^tarpit]: The terminology comes from the classic [Out of the Tar
     Pit][tarpit] (Section 7.1.1), which further granularizes these
@@ -774,7 +790,15 @@ If you liked this post, you might be interested in:
     single-threaded code. This becomes quite a bit more tricky if we're
     in a multi-thread environment.
 
------
+[^prod-config]: If we were to turn this into a production-ready library,
+    we might want to provide a way to disable this check so it can
+    helpfully catch bugs in development but not cost us anything in
+    the shipped product.
+
+[^identity-equality]: We'll use `===` equality, but it might make sense
+    to use
+    [same-value-zero](https://developer.mozilla.org/en-US/docs/Web/JavaScript/Equality_comparisons_and_sameness#same-value-zero_equality)
+    equality like many Javascript API's (such as `Map` and `Set`) do.
 
 [tarpit]: https://curtclifton.net/papers/MoseleyMarks06a.pdf
 [reactjs]: https://react.dev

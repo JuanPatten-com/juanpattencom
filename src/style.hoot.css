@@ -185,7 +185,7 @@ a.raquo::after {
 
 p {
   margin: 0.75em 0;
-  line-height: 1.618;
+  line-height: 1.5;
 }
 
 
@@ -231,6 +231,8 @@ p {
   text-transform: uppercase;
   font-variant: all-small-caps;
   text-decoration: none;
+  letter-spacing: 0.05ch;
+  font-weight: 300;
 }
 
 #main-nav a::before {

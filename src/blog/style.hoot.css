@@ -50,6 +50,11 @@ article :where(p, ul, ol, blockquote, pre, details) {
   margin: 0 0 1rem 0;
 }
 
+article li :where(ul, ol) {
+  margin-top: 0.25em;
+  margin-bottom: 0.25em;
+}
+
 article pre:has(> code:first-child) {
   --pad: 12px;
   font-size: 0.875em;
@@ -110,15 +115,11 @@ article details p:not(:last-of-type) {
 }
 
 article li {
-  margin-bottom: 0.5em;
+  margin-bottom: 0.375em;
 }
 
 article :where(ol, ul) {
   margin-left: 1em;
-}
-
-article li :where(ol, ul) {
-  margin-top: 0.5em;
 }
 
 article li p:last-of-type {
