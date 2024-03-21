@@ -762,7 +762,7 @@ a lot to be desired: it's not easy to combine `Atom`s into nested
 structures, for example. It's a bit clunky to work with `Atom`s whose
 values are lists, for another.
 
-And we have all this derived state, but no way to declaratively code our
+And we have all this derived state but no way to declaratively code our
 UI, so we end up doing a lot of manual DOM manipulation (check out the
 [code for the spreadsheet demo](/blog/reactive-ui-part-1/sheet.js) for
 example).
