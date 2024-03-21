@@ -1,0 +1,2591 @@
+
+
+
+<!doctype html>
+<html lang=en>
+  <head>
+    <meta charset="utf-8">
+    <meta name="viewport" content="width=device-width">
+    <meta name="theme-color" content="rgb(255 255 255)" media="(prefers-color-scheme: light)">
+    <meta name="theme-color" content="rgb(30 30 33)" media="(prefers-color-scheme: dark)">
+
+    <title>Let's Build a Reactive UI Framework -- Part 1: Data Flow - Juan Patten</title>
+
+    <link rel=stylesheet href="/style.css">
+    
+  <style>
+    @media (prefers-color-scheme: light) {
+      .depgraph-stroke {
+        stroke: #1d1d1d;
+      }
+      .depgraph-fill {
+        fill: #1d1d1d;
+      }
+    }
+    @media (prefers-color-scheme: dark) {
+      .depgraph-stroke {
+        stroke: rgb(225 225 225);
+      }
+      .depgraph-fill {
+        fill: rgb(225 225 225);
+      }
+    }
+
+    #sheet-preview {
+      border: none;
+      width: 100%;
+      height: 15em;
+    }
+
+    #sheet-preview.expanded {
+      position: fixed;
+      bottom: 0;
+      left: 0;
+      width: 100%;
+      height: 50%;
+      z-index: 999;
+    }
+  </style>
+
+<link rel=stylesheet href="/blog/style.css">
+<link rel=stylesheet href="/highlight.css">
+  </head>
+
+  <body class="">
+    <div id=mast vbox=center>
+      <h1><a href="/">Juan Patten</a></h1>
+      <nav id=main-nav hbox=between>
+        <a href="/">Home</a>
+        <a href="/blog/">Articles</a>
+        <a href="/projects/">Projects</a>
+      </nav>
+    </div>
+    <div id=content class="">
+      <article class=prose>
+<h1 id="lets-build-a-reactive-ui-framework-part-1-data-flow">Let&#8217;s Build a Reactive UI Framework &#8211; Part 1: Data Flow</h1>
+<div class=blog-post-meta>
+    <div class=pub-date>Published on Wednesday, March 20, 2024</div>
+</div>
+<p>Reactive dataflow libraries like <a href="https://docs.solidjs.com">Solid</a> and <a href="https://mobx.js.org/README.html">MobX</a> are
+a joy to use. They can feel like magic in the same way a spreadsheet
+feels like magic. Change one value and watch the effects ripple through
+the UI.</p>
+<p>The cool thing is that the concepts behind them are actually pretty
+simple! In this series of articles, I want to see if we can distill the
+reactive dataflow paradigm down to its essence, and implement it in
+a straightforward, readable way while still being correct
+(&#8220;glitch-free&#8221;<sup id="fnref1"><a href="#fn1" rel="footnote">1</a></sup> as they say) and performant enough to build
+real apps.</p>
+<p>We&#8217;ll start by building a simple and correct library, and then we&#8217;ll
+tackle some low-hanging optimization opportunities.</p>
+<h2 id="a-preview">A Preview</h2>
+<p>Here&#8217;s a demo of what we&#8217;ll be able to make at the end of the
+article. Everything is vanilla javascript, and the only library used is
+the one we&#8217;re about to build. You can <a href="./sheet.html">view it
+full-screen</a> if you&#8217;d rather.</p>
+<iframe id=sheet-preview src="/blog/reactive-ui-part-1/sheet.html"></iframe>
+<blockquote class=small-text>
+<p><strong>Usage Notes</strong></p>
+<ul>
+  <li>Cell formulas are just Javascript expressions.</li>
+  <li>Inside a cell's formula, you can refer to other cells by name, ie
+  <tt>a4</tt>. While editing, clicking another cell will insert its
+  name.
+  </li>
+  <li>Press <tt>Enter</tt> or <tt>Tab</tt> to finish editing a cell.
+  </li>
+  <li><tt>Math</tt> functions are exposed directly. Do
+  <tt>abs(a4)</tt>, not <del><tt>Math.abs(a4)</tt></del>.
+  </li>
+  <li>If a cell's formula results in an error, the cell will show
+  a ‼️ which you can hover over to see the error.
+  </li>
+  <li>The ☰ icon opens a sidebar where you can resize the grid.
+  </li>
+</ul>
+</blockquote>
+<h2 id="the-core-idea">The Core Idea</h2>
+<p>There are basically two types of data<sup id="fnref2"><a href="#fn2" rel="footnote">2</a></sup> in any system:</p>
+<ul>
+<li><strong><em>Derived data</em></strong> which can be calculated from other data in the system.</li>
+<li><strong><em>Input data</em></strong> which cannot. We have to read&#47;store this data.</li>
+</ul>
+<p>The distinction between the two can be fuzzy<sup id="fnref3"><a href="#fn3" rel="footnote">3</a></sup> in
+theory, but in practice it&#8217;s a useful distinction to guide how we design
+our data and shared state.</p>
+<p>If that makes intuitive sense, feel free to skip the following examples.</p>
+<details>
+<summary>Example 1: The Canonical Rectangle Example</summary>
+<p>
+Pretend we are making an app which displays some facts about a
+rectangle. Namely, the <code>width</code>, <code>height</code>,
+<code>area</code>, and <code>diagonal</code> of the rectangle.
+</p>
+<p>
+The rectangle's <code>width</code> and <code>height</code> are <em>input
+data</em>, because the only way we can know these facts is to be told
+them. On the other hand, the <code>area</code> and <code>diagonal</code>
+are <em>derived data</em>, because they can be calculated from
+the <code>width</code> and <code>height</code>.
+</p>
+</details>
+<details>
+<summary>Example 2: Filling Out a Form</summary>
+<p>
+Think of filling out a typical web form. There are some form fields,
+which may be valid or invalid. If they are valid, <tt>Submit</tt> button
+is enabled. If they are invalid, the <tt>Submit</tt> button is disabled,
+and an error message is displayed.
+</p>
+<p>
+The form fields are the <em>input data</em>. Whether they are valid or
+invalid is <em>derived data</em>. Additionally, the state of the
+<tt>Submit</tt> button and whether the error message is displayed are
+also <em>derived data</em>.
+</p>
+</details>
+<details>
+<summary>Example 3: A Spreadsheet</summary>
+<p>
+The most direct & visceral example is a spreadsheet. Some cells are just
+numbers (<em>input data</em>), and some are equations which reference
+other cells (<em>derived data</em>). When one of the input cells is
+updated, all the cells that are derived from that cell update
+automatically.
+</p>
+<p>
+Reactive framework people want all UIs to work like
+spreadsheets. 
+</p>
+</details>
+<h3 id="derived-data-flowing">Derived Data, Flowing</h3>
+<p>The goal of a reactive dataflow framework is that the only mutable state
+in our app is input data. Everything else is derived from that, and
+updates automatically when the inputs change.</p>
+<p>The idea behind libraries like <a href="https://react.dev">React</a> is that <b
+class=semibold>the entire UI is derived data</b>.</p>
+<h3 id="glossary">Glossary</h3>
+<p>I&#8217;ll use the following terms throughout:</p>
+<ul>
+<li>An <strong><code>Atom</code></strong> is an individual piece of input data.</li>
+<li>A <strong><code>Calc</code></strong> is an individual piece of derived data.</li>
+<li><code>Atom</code> and <code>Calc</code> are both a kind of <strong><em>fact</em></strong>.</li>
+<li>If a <code>Calc</code> uses the value of a fact, it <strong><em>observes</em></strong> that
+fact. When the observed fact changes, the <code>Calc</code> will automatically
+re-calculate.</li>
+<li>If <code>Child</code> observes <code>Parent</code>, then:
+<ul>
+<li><code>Parent</code> is a <strong><em>dependency</em></strong> of <code>Child</code>.</li>
+<li><code>Child</code> is a <strong><em>dependent</em></strong> of <code>Parent</code></li>
+</ul></li>
+<li>The web of facts observing other facts forms a <strong><em><a href="https://en.wikipedia.org/wiki/Dependency_graph">dependency
+graph</a></em></strong>.</li>
+</ul>
+<hr/>
+<h2 id="library-api">Library API</h2>
+<p>Let&#8217;s sketch out how we might turn these ideas into a library. First
+we&#8217;ll think about the API we want, and work backwards from there to the
+implementation.</p>
+<h3 id="section"><code>Atom</code></h3>
+<p>An <code>Atom</code> starts with an initial value:</p>
+<pre><code class="language-javascript">let x = Atom(5)  &#47;&#47; x&#39;s value is 5
+</code></pre>
+<p>Setting an <code>Atom</code>&#8217;s value will cause all its dependents to recalculate:</p>
+<pre><code class="language-javascript">x.set(10)  &#47;&#47; x&#39;s value is 10
+</code></pre>
+<p>To get the current value of an <code>Atom</code>, call it like a function:</p>
+<pre><code class="language-javascript">x()  &#47;&#47; =&#62; 20
+</code></pre>
+<p>If a <code>Calc</code> uses the value of an <code>Atom</code>, it observes that <code>Atom</code>. This
+is usually what we want, but if we want to look without observing, we
+can <em>peek</em>:</p>
+<pre><code class="language-javascript">x.peek()  &#47;&#47; =&#62; 20
+</code></pre>
+<h3 id="section-1"><code>Calc</code></h3>
+<p>A <code>Calc</code> is just a function. Ideally a <a href="https://en.wikipedia.org/wiki/Pure_function">pure function</a>:</p>
+<pre><code class="language-javascript">let xSquared = Calc(() =&#62; x() ** 2)
+</code></pre>
+<p><sup>Notice that this <code>Calc</code> observes the value of the <code>Atom</code> we created
+earlier.</sup></p>
+<p>To get the current value of a <code>Calc</code>, call it like a function:</p>
+<pre><code class="language-javascript">xSquared()  &#47;&#47; =&#62; 400
+</code></pre>
+<p><code>Calc</code>s can also observe other <code>Calc</code>s:</p>
+<pre><code class="language-javascript">let xSquaredPlus2 = (() =&#62; xSquared() + 2)
+</code></pre>
+<p>We can peek at a <code>Calc</code> without observing it:</p>
+<pre><code class="language-javascript">xSquaredPlus2.peek()  &#47;&#47; =&#62; 402
+</code></pre>
+<h3 id="section-2"><code>Effect</code></h3>
+<p>An <code>Effect</code> is like a <code>Calc</code>, but instead of calculating a new value
+when a fact changes, an effect <em>does something</em> when a fact changes:
+logs to the console, makes a network request, updates the UI, etc&#8230;</p>
+<p>An <code>Effect</code> is just a function that will be re-run whenever any of its
+observed facts change:</p>
+<pre><code class="language-javascript">let logger = Effect(() =&#62; console.log(`x == ${x()}`))
+</code></pre>
+<blockquote>
+<p>Is a <code>Calc</code> just a special case of an <code>Effect</code>? Kind
+of.<sup id="fnref4"><a href="#fn4" rel="footnote">4</a></sup></p>
+</blockquote>
+<hr/>
+<h2 id="usage-example">Usage Example</h2>
+<p>To get a sense for how the library feels &#8220;on the page&#8221;:</p>
+<details>
+<summary>Example Code</summary>
+<pre><code class="language-javascript">let fullName = Atom('James Bond')
+let intro = Atom("The name's")
+let punct = Atom('.')
+
+let first = Calc(() => fullName().split(' ')[0])
+let last = Calc(() => fullName().split(' ')[1])
+
+let sentence = Calc(() =>
+  `${intro()} ${last()}${punct()} ${first()} ${last()}${punct()}`)
+
+
+let logger = Effect(() => {
+  console.log(sentence())
+})
+
+
+fullName.set('Mary Oliver')
+
+intro.set(intro.peek() + ' still')
+
+after(1000, () => {
+  punct.set('?')
+  intro.set('Wait… is my name')
+})
+</code></pre>
+</details>
+<details>
+<summary>Example Console Output</summary>
+<pre>The name's Bond. James Bond.
+The name's Oliver. Mary Oliver.
+The name's still Oliver. Mary Oliver.
+The name's still Oliver? Mary Oliver?
+Wait… is my name Oliver? Mary Oliver?</pre>
+</details>
+<hr/>
+<h2 id="library-implementation">Library Implementation</h2>
+<p>Now that we&#8217;ve got an API in mind, let&#8217;s start working on an
+implementation. There are two main procedures to get our head around.</p>
+<h3 id="automatic-dependencies">Automatic Dependencies</h3>
+<p>Part of the &#8220;magic&#8221; feeling of a reactive framework is that it we never
+have to explicitly specify dependencies. The system figures them out for
+us. This is not only convenient, but important.<sup id="fnref5"><a href="#fn5" rel="footnote">5</a></sup></p>
+<p>And it&#8217;s surprisingly simple:</p>
+<ul>
+<li>We keep a stack of currently-running &#8220;observers&#8221; (ie. <code>Calc</code>
+&#38; <code>Effect</code>).</li>
+<li>When a <code>Calc</code> or <code>Effect</code> begins to execute, it pushes itself onto
+the stack. When it finishes, it pops itself off.</li>
+<li>Any time a fact&#8217;s value is read, it looks on the top of the stack to
+see if there is a currently running observer. If so, it registers
+itself as a dependency of that observer.</li>
+</ul>
+<p>That&#8217;s all there is to it.<sup id="fnref6"><a href="#fn6" rel="footnote">6</a></sup></p>
+<h3 id="reacting-to-changes">Reacting to Changes</h3>
+<p>Every time an <code>Atom</code> is updated, we need to figure out two things:</p>
+<ol>
+<li>Every <code>Calc</code><sup id="fnref7"><a href="#fn7" rel="footnote">7</a></sup> that could possibly change
+based on the <code>Atom</code>&#8217;s new value. We&#8217;ll call these <strong><em>stale</em></strong>.</li>
+<li>The order in which to recalculate affected <code>Calc</code>s. A <code>Calc</code> can
+recalculate if and only if <em>all</em> of its dependencies are <strong><em>fresh</em></strong>
+(ie. not stale).</li>
+</ol>
+<h4 id="the-algorithm">The Algorithm<sup id="fnref8"><a href="#fn8" rel="footnote">8</a></sup></h4>
+<p>Imagine a dependency graph that looks like this:</p>
+<div class="frame75 pin-to-above">
+<?xml version="1.0"?>
+<svg xmlns="http://www.w3.org/2000/svg" direction="ltr" viewBox="100 252.93 1000.95 469.53" stroke-linecap="round" stroke-linejoin="round" style="background-color: transparent;">
+  <g transform="matrix(1, 0, 0, 1, 139, 390)" opacity="1">
+    <path d="M9.9967,-0.2567 L51.3355,-1.3183 Q61.3322,-1.575 60.87,8.4146 L59.0559,48.3899 Q58.6008,58.3795 48.60,58.4725 L11.3257,58.8192 Q1.3261,58.9122 1.34,48.9122 L1.4035,8.9598 Q1.419,-1.0401 11.41,-0.8063 L50.2158,0.1012 Q60.2131,0.335 59.98,10.3325 L59.101,49.8786 Q58.8766,59.8761 48.87,59.7611 L10.1047,59.3154 Q0.1053,59.2004 -0.1135,49.2028 L-0.9929,9.0194 Q-1.2117,-0.9782 9.99,-0.2567 " fill="none" class="depgraph-stroke" stroke-width="5"/>
+  </g>
+  <g transform="matrix(1, 0, 0, 1, 132, 478)" opacity="1">
+    <path d="M9.9986,-0.1697 L51.0858,-0.867 Q61.0844,-1.0366 61.10,8.9633 L61.1806,50.7522 Q61.1992,60.7522 51.20,60.5965 L11.0935,59.972 Q1.0947,59.8164 1.12,49.8164 L1.2335,11.5732 Q1.2622,1.5733 11.26,1.5248 L49.0709,1.3413 Q59.0708,1.2928 58.95,11.2921 L58.4866,51.1749 Q58.3695,61.1742 48.37,60.8899 L9.985,59.7981 Q-0.0109,59.5138 0.21,49.5164 L1.0929,11.0878 Q1.3208,1.0904 9.99,-0.1697 " fill="none" class="depgraph-stroke" stroke-width="5"/>
+  </g>
+  <g transform="matrix(1, 0, 0, 1, 141, 565)" opacity="1">
+    <path d="M10,-0.0282 L51.6537,-0.1459 Q61.6536,-0.1742 61.50,9.8248 L60.9405,49.1038 Q60.7959,59.1028 50.79,59.3734 L10.7559,60.4573 Q0.7596,60.7279 0.61,50.729 L-0.0191,8.4804 Q-0.1681,-1.5185 9.82,-1.2201 L50.3738,-0.0098 Q60.3693,0.2886 60.51,10.2875 L61.0778,49.4966 Q61.2217,59.4955 51.22,59.825 L10.5247,61.1668 Q0.5302,61.4963 0.19,51.5018 L-1.1501,10.925 Q-1.4822,0.9305 10,-0.0282 " fill="none" class="depgraph-stroke" stroke-width="5"/>
+  </g>
+  <g transform="matrix(1, 0, 0, 1, 464.37, 420.60)" opacity="1">
+    <path d="M5.3509,52.0277 Q-0.128,47.2626 -1.7,39.6955 T-1.552,24.6014 4.94,10.9895 16.57,1.4023 31.13,-2.3906 45.96,0.3023 58.26,9.0084 65.69,22.0464 66.94,36.9854 61.84,51.088 51.27,61.71 37.24,66.9437 22.31,65.7888 9.24,58.4166 0.48,46.1928 -2.2907,31.4215 1.43,16.8924 10.85,5.2157 24.64,0.1946 32.43,0.0004 32.44,0.0102 26.52,2.8293 15.52,9.4401 7.38,18.7766 3.89,30.6028 5.78,42.835 12.61,53.1846 23.14,59.674 35.44,61.1063 47.22,57.2143 56.25,48.7249 60.81,37.1948 60.13,24.852 54.34,13.98 44.48,6.5663 32.41,3.9565 20.43,6.6358 10.66,14.1274 4.95,25.0312 4.39,37.3519 8.14,50.1788 10.83,56.787 5.35,52.0277 Z" class="depgraph-fill"/>
+  </g>
+  <g transform="matrix(1, 0, 0, 1, 328, 416)" opacity="1">
+    <g>
+      <defs>
+        <mask id="shape_S-Uus0NFmYGYezjroerrN_clip">
+          <rect x="-221.00947280945599" y="-53.586667418074285" width="458.79" height="240.79" fill="white"/>
+          <path d="M -107.67132256333163 94.06 L -121.00947280945597 87.20 L -108.39730833750632 79.08" fill="none" stroke="none"/>
+        </mask>
+      </defs>
+      <g mask="url(#shape_S-Uus0NFmYGYezjroerrN_clip)">
+        <rect x="-100" y="-100" width="458.79" height="240.79" fill="transparent" stroke="none"/>
+        <path d="M137.78735921321334,46.41333258192577 A1146.9865798805959 1146.98 0 0 1 -121.00947280945597,87.20590878763483" fill="none" class="depgraph-stroke" stroke-width="5" stroke-dasharray="none" stroke-dashoffset="none"/>
+      </g>
+      <path d="M -107.67132256333163 94.06 L -121.00947280945597 87.20 L -108.39730833750632 79.08" fill="none" class="depgraph-stroke" stroke-width="5"/>
+    </g>
+  </g>
+  <g transform="matrix(1, 0, 0, 1, 333, 422)" opacity="1">
+    <g>
+      <defs>
+        <mask id="shape_MuWr9XOb2cbTfhnwf_mlb_clip">
+          <rect x="-219.0022369565704" y="-98.712730774781" width="451.69" height="223.13" fill="white"/>
+          <path d="M -105.97606087952738 8.78 L -119.00223695657043 1.34 L -106.04794929318058 -6.216779852340175" fill="none" stroke="none"/>
+        </mask>
+      </defs>
+      <g mask="url(#shape_MuWr9XOb2cbTfhnwf_mlb_clip)">
+        <rect x="-100" y="-100" width="451.69" height="223.13" fill="transparent" stroke="none"/>
+        <path d="M132.6899829470144,24.42296476960871 A1237.6474787048699 1237.64 0 0 0 -119.00223695657043,1.3453912072263847" fill="none" class="depgraph-stroke" stroke-width="5" stroke-dasharray="none" stroke-dashoffset="none"/>
+      </g>
+      <path d="M -105.97606087952738 8.78 L -119.00223695657043 1.34 L -106.04794929318058 -6.216779852340175" fill="none" class="depgraph-stroke" stroke-width="5"/>
+    </g>
+  </g>
+  <g transform="matrix(1, 0, 0, 1, 452.74, 572.60)" opacity="1">
+    <path d="M65.5588,27.6212 Q68.2476,34.3734 66.20,41.814 T59.1942,55.1351 47.20,64.2391 32.47,67.4478 17.79,64.2083 5.82,55.0737 -1.156,41.7445 -1.8371,26.7711 3.80,12.8802 14.75,2.6285 28.99,-2.0635 43.85,-0.3472 56.63,7.454 64.93,19.9229 67.24,34.7299 63.14,49.1313 53.31,60.4278 39.64,66.5847 25.09,64.8856 18.02,61.5655 18.02,61.5558 24.60,61.7074 37.38,60.748 48.78,56.0522 57.17,47.0514 60.99,35.3393 59.57,23.0675 53.11,12.5411 42.79,5.6886 30.57,3.8102 18.68,7.2999 9.41,15.4857 4.47,26.7881 4.69,39.0591 10.05,50.1267 19.55,57.9436 31.44,61.0334 43.56,58.8511 53.60,51.7769 59.71,41.1169 62.22,27.9865 62.86,20.8705 65.55,27.6212 Z" class="depgraph-fill"/>
+  </g>
+  <g transform="matrix(1, 0, 0, 1, 328, 618)" opacity="1">
+    <g>
+      <defs>
+        <mask id="shape_HTmN5rub6AqIs0e4ND-yl_clip">
+          <rect x="-212.40539315801647" y="-111.19381198382791" width="438.46" height="214.54" fill="white"/>
+          <path d="M -101.24339284486402 -1.1733454772632292 L -112.40539315801647 -11.193811983827914 L -98.14641444898412 -15.850154558785448" fill="none" stroke="none"/>
+        </mask>
+      </defs>
+      <g mask="url(#shape_HTmN5rub6AqIs0e4ND-yl_clip)">
+        <rect x="-100" y="-100" width="438.46" height="214.54" fill="transparent" stroke="none"/>
+        <path d="M126.0570262319568,-6.2419040541955155 A601.250492342686 601.25 0 0 1 -112.40539315801647,-11.193811983827914" fill="none" class="depgraph-stroke" stroke-width="5" stroke-dasharray="none" stroke-dashoffset="none"/>
+      </g>
+      <path d="M -101.24339284486402 -1.1733454772632292 L -112.40539315801647 -11.193811983827914 L -98.14641444898412 -15.850154558785448" fill="none" class="depgraph-stroke" stroke-width="5"/>
+    </g>
+  </g>
+  <g transform="matrix(1, 0, 0, 1, 715.83, 625.80)" opacity="1">
+    <path d="M59.5203,52.2089 Q56.8167,58.7785 50.34,62.6092 T36.4118,67.2944 21.78,65.8327 9.04,58.4642 0.45,46.5226 -2.4709,32.124 0.79,17.7672 9.67,6.0216 22.56,-1.0006 37.17,-2.0624 50.96,2.9298 61.50,13.0982 66.87,26.7417 66.17,41.398 59.60,54.4706 48.20,63.6223 34.00,67.2924 19.56,64.851 8.60,55.6157 4.61,49.1579 4.62,49.1511 9.94,52.728 20.91,58.8221 32.74,61.2247 44.51,58.5381 54.12,51.3269 59.92,40.7706 60.93,28.728 56.91,17.3738 48.52,8.7006 37.33,4.2077 25.36,4.7711 14.63,10.209 7.03,19.5401 3.92,31.1727 5.91,42.9918 12.61,52.9743 22.78,59.3636 34.65,60.9849 46.15,57.5768 56.87,50.1383 62.21,45.6334 59.52,52.2089 Z" class="depgraph-fill"/>
+  </g>
+  <g transform="matrix(1, 0, 0, 1, 729.41, 681.47)" opacity="1">
+    <g>
+      <defs>
+        <mask id="shape_X8HvbM0krabnp7OGqGHY6_clip">
+          <rect x="-300.73259218453165" y="-160.6716260639862" width="388.46" height="237.69" fill="white"/>
+          <path d="M -191.1996896308442 -49.090444392761974 L -200.73259218453163 -60.671626063986196 L -185.93654337456502 -63.13677101166893" fill="none" stroke="none"/>
+        </mask>
+      </defs>
+      <g mask="url(#shape_X8HvbM0krabnp7OGqGHY6_clip)">
+        <rect x="-100" y="-100" width="388.46" height="237.69" fill="transparent" stroke="none"/>
+        <path d="M-12.26591343011512,-22.976430069392563 A553.0034356305026 553.00 0 0 1 -200.73259218453163,-60.671626063986196" fill="none" class="depgraph-stroke" stroke-width="5" stroke-dasharray="none" stroke-dashoffset="none"/>
+      </g>
+      <path d="M -191.1996896308442 -49.090444392761974 L -200.73259218453163 -60.671626063986196 L -185.93654337456502 -63.13677101166893" fill="none" class="depgraph-stroke" stroke-width="5"/>
+    </g>
+  </g>
+  <g transform="matrix(1, 0, 0, 1, 584.47, 284.60)" opacity="1">
+    <path d="M7.6692,10.1256 Q11.0072,3.8829 17.87,0.7386 T32.2456,-2.4495 46.64,0.5092 58.57,9.1662 65.82,22.0194 67.13,36.6408 62.36,50.4986 52.32,61.1729 38.78,66.7707 24.09,66.3197 10.89,59.8875 1.55,48.5781 -2.2986,34.4103 -0.007,19.946 7.99,7.6679 20.40,-0.2303 34.96,-2.2752 49.05,1.8517 58.91,12.2817 62.15,19.1465 62.14,19.1525 57.24,15.0021 47.00,7.6969 35.52,3.9034 23.52,5.2422 13.12,11.4116 6.17,21.2598 3.87,33.0757 6.62,44.8345 13.93,54.4256 24.60,60.0646 36.68,60.8434 47.93,56.6204 56.47,48.117 60.77,36.8965 60.06,24.8916 54.49,14.2144 44.99,6.8203 33.32,3.9883 21.51,6.1659 10.08,12.4521 4.33,16.375 7.66,10.1256 Z" class="depgraph-fill"/>
+  </g>
+  <g transform="matrix(1, 0, 0, 1, 632.37, 467.27)" opacity="1">
+    <g>
+      <defs>
+        <mask id="shape_nHJESl4NN_WuTTWJyqfHY_clip">
+          <rect x="-195.72394260943534" y="-221.43155925929767" width="268.18" height="282.03" fill="white"/>
+          <path d="M -80.9427299272046 -41.953510934189204 L -95.72394260943534 -39.40091389535576 L -90.54395014957467 -53.47811809632502" fill="none" stroke="none"/>
+        </mask>
+      </defs>
+      <g mask="url(#shape_nHJESl4NN_WuTTWJyqfHY_clip)">
+        <rect x="-100" y="-100" width="268.18" height="282.03" fill="transparent" stroke="none"/>
+        <path d="M-27.53816904171572,-121.43155925929773 A253.07224584079222 253.07 0 0 1 -95.72394260943534,-39.40091389535576" fill="none" class="depgraph-stroke" stroke-width="5" stroke-dasharray="none" stroke-dashoffset="none"/>
+      </g>
+      <path d="M -80.9427299272046 -41.953510934189204 L -95.72394260943534 -39.40091389535576 L -90.54395014957467 -53.47811809632502" fill="none" class="depgraph-stroke" stroke-width="5"/>
+    </g>
+  </g>
+  <g transform="matrix(1, 0, 0, 1, 634.37, 462.27)" opacity="1">
+    <g>
+      <defs>
+        <mask id="shape_yFE8tlO62zLgjcstlJGdC_clip">
+          <rect x="-521.5032660831482" y="-246.53192762439699" width="572.92" height="268.55" fill="white"/>
+          <path d="M -406.6691376076127 -75.74749533644881 L -421.5032660831482 -77.97204750965284 L -412.1596831513419 -89.70650352586668" fill="none" stroke="none"/>
+        </mask>
+      </defs>
+      <g mask="url(#shape_yFE8tlO62zLgjcstlJGdC_clip)">
+        <rect x="-100" y="-100" width="572.92" height="268.55" fill="transparent" stroke="none"/>
+        <path d="M-48.58239178764404,-146.34212183471578 A947.9469898655045 947.94 0 0 0 -421.5032660831482,-77.97204750965284" fill="none" class="depgraph-stroke" stroke-width="5" stroke-dasharray="none" stroke-dashoffset="none"/>
+      </g>
+      <path d="M -406.6691376076127 -75.74749533644881 L -421.5032660831482 -77.97204750965284 L -412.1596831513419 -89.70650352586668" fill="none" class="depgraph-stroke" stroke-width="5"/>
+    </g>
+  </g>
+  <g transform="matrix(1, 0, 0, 1, 1000.27, 314.49)" opacity="1">
+    <path d="M0.3551,22.8399 Q0.5978,16.1186 5.03,10.6 T15.7416,1.67 29.08,-2.4464 42.95,-0.9779 55.18,5.7679 63.75,16.7293 67.38,30.1713 65.52,43.9001 58.48,55.8463 47.32,64.1144 33.79,67.3991 20.11,65.183 8.40,57.7847 0.45,46.4059 -2.4578,32.8304 0.18,19.1842 7.95,7.6619 19.58,0.061 33.12,-0.8193 40.10,0.9386 40.10,0.9486 34.16,2.1907 22.72,5.3977 12.94,11.3423 6.28,20.6446 3.76,31.8029 5.76,43.0495 12.00,52.6521 21.41,59.1136 32.60,61.3278 43.83,58.9433 53.27,52.4295 59.39,42.81 61.21,31.5623 58.55,20.4532 51.80,11.2994 41.97,5.4909 30.71,3.9188 19.72,6.9079 10.73,13.8744 3.54,23.8963 0.12,29.564 0.35,22.8399 Z" class="depgraph-fill"/>
+  </g>
+  <g transform="matrix(1, 0, 0, 1, 864.41, 355.47)" opacity="1">
+    <g>
+      <defs>
+        <mask id="shape_TsRedPUR0PDHnqUJLAypL_clip">
+          <rect x="-420.20684107956305" y="-98.20502879503601" width="658.09" height="294.13" fill="white"/>
+          <path d="M -306.54664670263526 102.12 L -320.20684107956305 95.93 L -308.0102443626903 87.20" fill="none" stroke="none"/>
+        </mask>
+      </defs>
+      <g mask="url(#shape_TsRedPUR0PDHnqUJLAypL_clip)">
+        <rect x="-100" y="-100" width="658.09" height="294.13" fill="transparent" stroke="none"/>
+        <path d="M137.8847061320364,1.7949712049640425 A2160.9353149781186 2160.93 0 0 1 -320.20684107956305,95.9330740147011" fill="none" class="depgraph-stroke" stroke-width="5" stroke-dasharray="none" stroke-dashoffset="none"/>
+      </g>
+      <path d="M -306.54664670263526 102.12 L -320.20684107956305 95.93 L -308.0102443626903 87.20" fill="none" class="depgraph-stroke" stroke-width="5"/>
+    </g>
+  </g>
+  <g transform="matrix(1, 0, 0, 1, 1003.95, 459.49)" opacity="1">
+    <path d="M3.9666,14.7256 Q5.7641,8.6627 11.05,4.6343 T22.6816,-1.2418 35.65,-2.4865 48.24,1.0693 58.66,8.9906 65.48,20.1893 67.69,33.1143 65.02,45.9358 57.81,56.846 47.16,64.4046 34.51,67.5672 21.56,65.8689 10.12,59.5643 1.75,49.4952 -2.3249,37.0948 -1.577,24.0999 3.89,12.2206 13.27,3.1716 25.60,-0.2415 32.41,-0.035 32.41,-0.0252 27.26,2.5422 17.49,7.9068 9.60,15.1042 4.83,24.7319 3.84,35.3494 6.83,45.5942 13.44,54.0447 22.66,59.5158 33.21,61.2658 43.66,59.0389 52.53,53.0982 58.64,44.3285 61.18,33.9585 59.73,23.3672 54.49,14.0436 46.21,7.2907 36.03,4.0555 25.41,4.7455 15.77,9.2236 6.77,16.5758 2.17,20.7938 3.96,14.7256 Z" class="depgraph-fill"/>
+  </g>
+  <g transform="matrix(1, 0, 0, 1, 1003.63, 601.49)" opacity="1">
+    <path d="M28.0372,65.5952 Q20.6474,66.3012 13.97,62.0741 T3.0549,51.214 -2.1314,36.7362 -0.5828,21.4317 7.35,8.2982 20.21,-0.1248 35.46,-2.1966 50.04,2.491 61.22,12.9727 66.84,27.1969 65.77,42.48 58.26,55.8226 45.74,64.6384 30.66,67.2433 15.90,63.0755 4.36,52.9984 -1.6652,38.9226 -1.1223,23.5634 7.08,11.0978 13.32,6.2273 13.33,6.2339 10.16,12.1048 5.10,24.1594 4.21,36.7705 8.77,48.5279 17.95,57.1393 29.95,60.9837 42.42,59.2934 53.00,52.4261 59.62,41.6814 60.94,29.1458 56.71,17.2526 47.82,8.3064 35.97,4.1167 23.44,5.4461 12.70,11.9781 5.81,22.4626 4.08,34.9037 7.91,46.866 16.50,56.0599 28.62,62.2925 35.42,64.8793 28.03,65.5952 Z" class="depgraph-fill"/>
+  </g>
+  <g transform="matrix(1, 0, 0, 1, 882.41, 636.47)" opacity="1">
+    <g>
+      <defs>
+        <mask id="shape_P2YkL8fQuzD6-zEjB6MQj_clip">
+          <rect x="-187.4060785800255" y="-99.78544777762056" width="409.94" height="217.72" fill="white"/>
+          <path d="M -73.83063559233113 24.32 L -87.4060785800255 17.94 L -75.09291495310923 9.37" fill="none" stroke="none"/>
+        </mask>
+      </defs>
+      <g mask="url(#shape_P2YkL8fQuzD6-zEjB6MQj_clip)">
+        <rect x="-100" y="-100" width="409.94" height="217.72" fill="transparent" stroke="none"/>
+        <path d="M122.53634194940537,0.21455222237943872L-87.4060785800255,17.94450718285517" fill="none" class="depgraph-stroke" stroke-width="5" stroke-dasharray="none" stroke-dashoffset="none"/>
+      </g>
+      <path d="M -73.83063559233113 24.32 L -87.4060785800255 17.94 L -75.09291495310923 9.37" fill="none" class="depgraph-stroke" stroke-width="5"/>
+    </g>
+  </g>
+  <g transform="matrix(1, 0, 0, 1, 719.52, 511.80)" opacity="1">
+    <path d="M12.4489,59.2832 Q5.9773,56.5043 2.22,50.0513 T-2.2911,36.1631 -0.7637,21.6294 6.58,8.961 18.50,0.4423 32.83,-2.4213 47.09,0.744 58.78,9.4275 65.91,22.1726 67.20,36.7508 62.40,50.5695 52.42,61.2222 38.96,66.8682 24.38,66.4516 11.22,60.1206 1.8,48.9855 -2.2233,34.988 -0.1807,20.5711 8.60,9.3603 14.85,5.1692 14.85,5.1762 11.52,10.6001 5.86,21.7466 3.76,33.581 6.73,45.193 14.23,54.5746 24.88,60.1255 36.80,60.8758 47.95,56.6036 56.41,48.1364 60.74,36.9777 60.13,25.022 54.68,14.3714 45.38,6.8985 33.79,3.9191 22.00,5.9073 12.05,12.5267 5.68,22.6478 4.01,34.4627 7.30,45.9191 14.55,56.6696 18.92,62.0541 12.44,59.2832 Z" class="depgraph-fill"/>
+  </g>
+  <g transform="matrix(1, 0, 0, 1, 874.41, 499.47)" opacity="1">
+    <g>
+      <defs>
+        <mask id="shape_k4splTVG2geIjq4HtRLIZ_clip">
+          <rect x="-181.05200135704428" y="-113.35661894464982" width="411.90" height="235.58" fill="white"/>
+          <path d="M -66.18589226619696 24.23 L -81.05200135704426 22.23 L -71.8871557231026 10.35" fill="none" stroke="none"/>
+        </mask>
+      </defs>
+      <g mask="url(#shape_k4splTVG2geIjq4HtRLIZ_clip)">
+        <rect x="-100" y="-100" width="411.90" height="235.58" fill="transparent" stroke="none"/>
+        <path d="M130.85282030693406,-11.562404332465746 A435.43967645474123 435.43 0 0 0 -81.05200135704426,22.232672416289176" fill="none" class="depgraph-stroke" stroke-width="5" stroke-dasharray="none" stroke-dashoffset="none"/>
+      </g>
+      <path d="M -66.18589226619696 24.23 L -81.05200135704426 22.23 L -71.8871557231026 10.35" fill="none" class="depgraph-stroke" stroke-width="5"/>
+    </g>
+  </g>
+  <g transform="matrix(1, 0, 0, 1, 736.41, 560.47)" opacity="1">
+    <g>
+      <defs>
+        <mask id="shape_KtvuH4OpWM5Lw9lw_RZEH_clip">
+          <rect x="-293.9105421586628" y="-199.03338266976482" width="382.47" height="267.25" fill="white"/>
+          <path d="M -182.9319704023163 -88.81227890398932 L -193.91054215866282 -99.03338266976482 L -179.56952076461118 -103.43055282514351" fill="none" stroke="none"/>
+        </mask>
+      </defs>
+      <g mask="url(#shape_KtvuH4OpWM5Lw9lw_RZEH_clip)">
+        <rect x="-100" y="-100" width="382.47" height="267.25" fill="transparent" stroke="none"/>
+        <path d="M-11.436232625878006,-31.77705454537511 A708.7585526134293 708.75 0 0 0 -193.91054215866282,-99.03338266976482" fill="none" class="depgraph-stroke" stroke-width="5" stroke-dasharray="none" stroke-dashoffset="none"/>
+      </g>
+      <path d="M -182.9319704023163 -88.81227890398932 L -193.91054215866282 -99.03338266976482 L -179.56952076461118 -103.43055282514351" fill="none" class="depgraph-stroke" stroke-width="5"/>
+    </g>
+  </g>
+  <g transform="matrix(1, 0, 0, 1, 731.41, 557.47)" opacity="1">
+    <g>
+      <defs>
+        <mask id="shape_x8qwKV53Nq7KFYiDWZQd5_clip">
+          <rect x="-300.3559904798832" y="-99.83607108036148" width="392.45" height="241.57" fill="white"/>
+          <path d="M -187.07055735483164 48.69 L -200.35599047988316 41.73 L -187.6822748284968 33.71" fill="none" stroke="none"/>
+        </mask>
+      </defs>
+      <g mask="url(#shape_x8qwKV53Nq7KFYiDWZQd5_clip)">
+        <rect x="-100" y="-100" width="392.45" height="241.57" fill="transparent" stroke="none"/>
+        <path d="M-7.8981140537617875,0.16392891963846523 A532.2605680375101 532.26 0 0 1 -200.35599047988316,41.73545178341624" fill="none" class="depgraph-stroke" stroke-width="5" stroke-dasharray="none" stroke-dashoffset="none"/>
+      </g>
+      <path d="M -187.07055735483164 48.69 L -200.35599047988316 41.73 L -187.6822748284968 33.71" fill="none" class="depgraph-stroke" stroke-width="5"/>
+    </g>
+  </g>
+  <g transform="matrix(1, 0, 0, 1, 153.70, 402.51)" opacity="1">
+    <g>
+      <text font-size="24px" font-family="ui-monospace, monospace" font-style="normal" font-weight="normal" line-height="32.400000000000006px" dominant-baseline="mathematical" alignment-baseline="mathematical" fill="rgb(249, 250, 251)">
+        <tspan alignment-baseline="mathematical" x="0px" y="12px">A1</tspan>
+      </text>
+      <text font-size="24px" font-family="ui-monospace, monospace" font-style="normal" font-weight="normal" line-height="32.400000000000006px" dominant-baseline="mathematical" alignment-baseline="mathematical" stroke="none" stroke-width="2px" class="depgraph-fill">
+        <tspan alignment-baseline="mathematical" x="0px" y="12px">A1</tspan>
+      </text>
+    </g>
+  </g>
+  <g transform="matrix(1, 0, 0, 1, 148.70, 493.92)" opacity="1">
+    <g>
+      <text font-size="24px" font-family="ui-monospace, monospace" font-style="normal" font-weight="normal" line-height="32.400000000000006px" dominant-baseline="mathematical" alignment-baseline="mathematical" fill="rgb(249, 250, 251)">
+        <tspan alignment-baseline="mathematical" x="0px" y="12px">A2</tspan>
+      </text>
+      <text font-size="24px" font-family="ui-monospace, monospace" font-style="normal" font-weight="normal" line-height="32.400000000000006px" dominant-baseline="mathematical" alignment-baseline="mathematical" stroke="none" stroke-width="2px" class="depgraph-fill">
+        <tspan alignment-baseline="mathematical" x="0px" y="12px">A2</tspan>
+      </text>
+    </g>
+  </g>
+  <g transform="matrix(1, 0, 0, 1, 158.04, 579.96)" opacity="1">
+    <g>
+      <text font-size="24px" font-family="ui-monospace, monospace" font-style="normal" font-weight="normal" line-height="32.400000000000006px" dominant-baseline="mathematical" alignment-baseline="mathematical" fill="rgb(249, 250, 251)">
+        <tspan alignment-baseline="mathematical" x="0px" y="12px">A3</tspan>
+      </text>
+      <text font-size="24px" font-family="ui-monospace, monospace" font-style="normal" font-weight="normal" line-height="32.400000000000006px" dominant-baseline="mathematical" alignment-baseline="mathematical" stroke="none" stroke-width="2px" class="depgraph-fill">
+        <tspan alignment-baseline="mathematical" x="0px" y="12px">A3</tspan>
+      </text>
+    </g>
+  </g>
+  <g transform="matrix(1, 0, 0, 1, 602.94, 300.34)" opacity="1">
+    <g>
+      <text font-size="24px" font-family="ui-monospace, monospace" font-style="normal" font-weight="normal" line-height="32.400000000000006px" dominant-baseline="mathematical" alignment-baseline="mathematical" fill="rgb(249, 250, 251)">
+        <tspan alignment-baseline="mathematical" x="0px" y="12px">C3</tspan>
+      </text>
+      <text font-size="24px" font-family="ui-monospace, monospace" font-style="normal" font-weight="normal" line-height="32.400000000000006px" dominant-baseline="mathematical" alignment-baseline="mathematical" stroke="none" stroke-width="2px" class="depgraph-fill">
+        <tspan alignment-baseline="mathematical" x="0px" y="12px">C3</tspan>
+      </text>
+    </g>
+  </g>
+  <g transform="matrix(1, 0, 0, 1, 737.76, 526.18)" opacity="1">
+    <g>
+      <text font-size="24px" font-family="ui-monospace, monospace" font-style="normal" font-weight="normal" line-height="32.400000000000006px" dominant-baseline="mathematical" alignment-baseline="mathematical" fill="rgb(249, 250, 251)">
+        <tspan alignment-baseline="mathematical" x="0px" y="12px">C4</tspan>
+      </text>
+      <text font-size="24px" font-family="ui-monospace, monospace" font-style="normal" font-weight="normal" line-height="32.400000000000006px" dominant-baseline="mathematical" alignment-baseline="mathematical" stroke="none" stroke-width="2px" class="depgraph-fill">
+        <tspan alignment-baseline="mathematical" x="0px" y="12px">C4</tspan>
+      </text>
+    </g>
+  </g>
+  <g transform="matrix(1, 0, 0, 1, 732.76, 642.69)" opacity="1">
+    <g>
+      <text font-size="24px" font-family="ui-monospace, monospace" font-style="normal" font-weight="normal" line-height="32.400000000000006px" dominant-baseline="mathematical" alignment-baseline="mathematical" fill="rgb(249, 250, 251)">
+        <tspan alignment-baseline="mathematical" x="0px" y="12px">C5</tspan>
+      </text>
+      <text font-size="24px" font-family="ui-monospace, monospace" font-style="normal" font-weight="normal" line-height="32.400000000000006px" dominant-baseline="mathematical" alignment-baseline="mathematical" stroke="none" stroke-width="2px" class="depgraph-fill">
+        <tspan alignment-baseline="mathematical" x="0px" y="12px">C5</tspan>
+      </text>
+    </g>
+  </g>
+  <g transform="matrix(1, 0, 0, 1, 1016.34, 329.02)" opacity="1">
+    <g>
+      <text font-size="24px" font-family="ui-monospace, monospace" font-style="normal" font-weight="normal" line-height="32.400000000000006px" dominant-baseline="mathematical" alignment-baseline="mathematical" fill="rgb(249, 250, 251)">
+        <tspan alignment-baseline="mathematical" x="0px" y="12px">C6</tspan>
+      </text>
+      <text font-size="24px" font-family="ui-monospace, monospace" font-style="normal" font-weight="normal" line-height="32.400000000000006px" dominant-baseline="mathematical" alignment-baseline="mathematical" stroke="none" stroke-width="2px" class="depgraph-fill">
+        <tspan alignment-baseline="mathematical" x="0px" y="12px">C6</tspan>
+      </text>
+    </g>
+  </g>
+  <g transform="matrix(1, 0, 0, 1, 1022.10, 477.79)" opacity="1">
+    <g>
+      <text font-size="24px" font-family="ui-monospace, monospace" font-style="normal" font-weight="normal" line-height="32.400000000000006px" dominant-baseline="mathematical" alignment-baseline="mathematical" fill="rgb(249, 250, 251)">
+        <tspan alignment-baseline="mathematical" x="0px" y="12px">C7</tspan>
+      </text>
+      <text font-size="24px" font-family="ui-monospace, monospace" font-style="normal" font-weight="normal" line-height="32.400000000000006px" dominant-baseline="mathematical" alignment-baseline="mathematical" stroke="none" stroke-width="2px" class="depgraph-fill">
+        <tspan alignment-baseline="mathematical" x="0px" y="12px">C7</tspan>
+      </text>
+    </g>
+  </g>
+  <g transform="matrix(1, 0, 0, 1, 1020.68, 615.81)" opacity="1">
+    <g>
+      <text font-size="24px" font-family="ui-monospace, monospace" font-style="normal" font-weight="normal" line-height="32.400000000000006px" dominant-baseline="mathematical" alignment-baseline="mathematical" fill="rgb(249, 250, 251)">
+        <tspan alignment-baseline="mathematical" x="0px" y="12px">C8</tspan>
+      </text>
+      <text font-size="24px" font-family="ui-monospace, monospace" font-style="normal" font-weight="normal" line-height="32.400000000000006px" dominant-baseline="mathematical" alignment-baseline="mathematical" stroke="none" stroke-width="2px" class="depgraph-fill">
+        <tspan alignment-baseline="mathematical" x="0px" y="12px">C8</tspan>
+      </text>
+    </g>
+  </g>
+  <g transform="matrix(1, 0, 0, 1, 481.44, 436.56)" opacity="1">
+    <g>
+      <text font-size="24px" font-family="ui-monospace, monospace" font-style="normal" font-weight="normal" line-height="32.400000000000006px" dominant-baseline="mathematical" alignment-baseline="mathematical" fill="rgb(249, 250, 251)">
+        <tspan alignment-baseline="mathematical" x="0px" y="12px">C1</tspan>
+      </text>
+      <text font-size="24px" font-family="ui-monospace, monospace" font-style="normal" font-weight="normal" line-height="32.400000000000006px" dominant-baseline="mathematical" alignment-baseline="mathematical" stroke="none" stroke-width="2px" class="depgraph-fill">
+        <tspan alignment-baseline="mathematical" x="0px" y="12px">C1</tspan>
+      </text>
+    </g>
+  </g>
+  <g transform="matrix(1, 0, 0, 1, 471.06, 588.92)" opacity="1">
+    <g>
+      <text font-size="24px" font-family="ui-monospace, monospace" font-style="normal" font-weight="normal" line-height="32.400000000000006px" dominant-baseline="mathematical" alignment-baseline="mathematical" fill="rgb(249, 250, 251)">
+        <tspan alignment-baseline="mathematical" x="0px" y="12px">C2</tspan>
+      </text>
+      <text font-size="24px" font-family="ui-monospace, monospace" font-style="normal" font-weight="normal" line-height="32.400000000000006px" dominant-baseline="mathematical" alignment-baseline="mathematical" stroke="none" stroke-width="2px" class="depgraph-fill">
+        <tspan alignment-baseline="mathematical" x="0px" y="12px">C2</tspan>
+      </text>
+    </g>
+  </g>
+</svg>
+
+</div>
+<blockquote>
+<p>Squares are <code>Atom</code>s. Circles are <code>Calc</code>s. Arrows mean &#8220;depends-on&#8221;.</p>
+</blockquote>
+<ol>
+<li>When an <code>Atom</code> is told to change its value, it will first notify all
+its dependents that it is stale. They will in turn notify all their
+dependents, and so forth. When this is done, every fact that could
+possibly be affected by the change has been marked stale.</li>
+</ol>
+<div class="frame75 pin-to-above">
+<?xml version="1.0"?>
+<svg xmlns="http://www.w3.org/2000/svg" direction="ltr" viewBox="100 252.93 1000.95 469.53" stroke-linecap="round" stroke-linejoin="round" style="background-color: transparent;">
+  <g transform="matrix(1, 0, 0, 1, 139, 390)" opacity="1">
+    <g stroke-width="5" class="depgraph-stroke" fill="none">
+      <line x1="0" y1="0" x2="60" y2="0" stroke-dasharray="0.05 11.94" stroke-dashoffset="0.02"/>
+      <line x1="60" y1="0" x2="60" y2="60" stroke-dasharray="0.05 11.94" stroke-dashoffset="0.02"/>
+      <line x1="60" y1="60" x2="0" y2="60" stroke-dasharray="0.05 11.94" stroke-dashoffset="0.02"/>
+      <line x1="0" y1="60" x2="0" y2="0" stroke-dasharray="0.05 11.94" stroke-dashoffset="0.02"/>
+    </g>
+  </g>
+  <g transform="matrix(1, 0, 0, 1, 132, 478)" opacity="1">
+    <path d="M9.9986,-0.1697 L51.0858,-0.867 Q61.0844,-1.0366 61.10,8.9633 L61.1806,50.7522 Q61.1992,60.7522 51.20,60.5965 L11.0935,59.972 Q1.0947,59.8164 1.12,49.8164 L1.2335,11.5732 Q1.2622,1.5733 11.26,1.5248 L49.0709,1.3413 Q59.0708,1.2928 58.95,11.2921 L58.4866,51.1749 Q58.3695,61.1742 48.37,60.8899 L9.985,59.7981 Q-0.0109,59.5138 0.21,49.5164 L1.0929,11.0878 Q1.3208,1.0904 9.99,-0.1697 " fill="none" class="depgraph-stroke" stroke-width="5"/>
+  </g>
+  <g transform="matrix(1, 0, 0, 1, 141, 565)" opacity="1">
+    <path d="M10,-0.0282 L51.6537,-0.1459 Q61.6536,-0.1742 61.50,9.8248 L60.9405,49.1038 Q60.7959,59.1028 50.79,59.3734 L10.7559,60.4573 Q0.7596,60.7279 0.61,50.729 L-0.0191,8.4804 Q-0.1681,-1.5185 9.82,-1.2201 L50.3738,-0.0098 Q60.3693,0.2886 60.51,10.2875 L61.0778,49.4966 Q61.2217,59.4955 51.22,59.825 L10.5247,61.1668 Q0.5302,61.4963 0.19,51.5018 L-1.1501,10.925 Q-1.4822,0.9305 10,-0.0282 " fill="none" class="depgraph-stroke" stroke-width="5"/>
+  </g>
+  <g transform="matrix(1, 0, 0, 1, 464.37, 420.60)" opacity="1">
+    <path d="M2.5,32.5a30,30,0,1,1,60,0a30,30,0,1,1,-60,0" stroke-width="5" width="65" height="65" fill="none" class="depgraph-stroke" stroke-dasharray="0.05 11.72" stroke-dashoffset="0.02"/>
+  </g>
+  <g transform="matrix(1, 0, 0, 1, 328, 416)" opacity="1">
+    <g>
+      <defs>
+        <mask id="shape_S-Uus0NFmYGYezjroerrN_clip">
+          <rect x="-221.00947280945599" y="-53.586667418074285" width="458.79" height="240.79" fill="white"/>
+          <path d="M -107.67132256333163 94.06 L -121.00947280945597 87.20 L -108.39730833750632 79.08" fill="none" stroke="none"/>
+        </mask>
+      </defs>
+      <g mask="url(#shape_S-Uus0NFmYGYezjroerrN_clip)">
+        <rect x="-100" y="-100" width="458.79" height="240.79" fill="transparent" stroke="none"/>
+        <path d="M137.78735921321334,46.41333258192577 A1146.9865798805959 1146.98 0 0 1 -121.00947280945597,87.20590878763483" fill="none" class="depgraph-stroke" stroke-width="5" stroke-dasharray="none" stroke-dashoffset="none"/>
+      </g>
+      <path d="M -107.67132256333163 94.06 L -121.00947280945597 87.20 L -108.39730833750632 79.08" fill="none" class="depgraph-stroke" stroke-width="5"/>
+    </g>
+  </g>
+  <g transform="matrix(1, 0, 0, 1, 333, 422)" opacity="1">
+    <g>
+      <defs>
+        <mask id="shape_MuWr9XOb2cbTfhnwf_mlb_clip">
+          <rect x="-219.0022369565704" y="-98.712730774781" width="451.69" height="223.13" fill="white"/>
+          <path d="M -105.97606087952738 8.78 L -119.00223695657043 1.34 L -106.04794929318058 -6.216779852340175" fill="none" stroke="none"/>
+        </mask>
+      </defs>
+      <g mask="url(#shape_MuWr9XOb2cbTfhnwf_mlb_clip)">
+        <rect x="-100" y="-100" width="451.69" height="223.13" fill="transparent" stroke="none"/>
+        <path d="M132.6899829470144,24.42296476960871 A1237.6474787048699 1237.64 0 0 0 -119.00223695657043,1.3453912072263847" fill="none" class="depgraph-stroke" stroke-width="5" stroke-dasharray="0.05 10.49" stroke-dashoffset="0.02"/>
+      </g>
+      <path d="M -105.97606087952738 8.78 L -119.00223695657043 1.34 L -106.04794929318058 -6.216779852340175" fill="none" class="depgraph-stroke" stroke-width="5"/>
+    </g>
+  </g>
+  <g transform="matrix(1, 0, 0, 1, 452.74, 572.60)" opacity="1">
+    <path d="M65.5588,27.6212 Q68.2476,34.3734 66.20,41.814 T59.1942,55.1351 47.20,64.2391 32.47,67.4478 17.79,64.2083 5.82,55.0737 -1.156,41.7445 -1.8371,26.7711 3.80,12.8802 14.75,2.6285 28.99,-2.0635 43.85,-0.3472 56.63,7.454 64.93,19.9229 67.24,34.7299 63.14,49.1313 53.31,60.4278 39.64,66.5847 25.09,64.8856 18.02,61.5655 18.02,61.5558 24.60,61.7074 37.38,60.748 48.78,56.0522 57.17,47.0514 60.99,35.3393 59.57,23.0675 53.11,12.5411 42.79,5.6886 30.57,3.8102 18.68,7.2999 9.41,15.4857 4.47,26.7881 4.69,39.0591 10.05,50.1267 19.55,57.9436 31.44,61.0334 43.56,58.8511 53.60,51.7769 59.71,41.1169 62.22,27.9865 62.86,20.8705 65.55,27.6212 Z" class="depgraph-fill"/>
+  </g>
+  <g transform="matrix(1, 0, 0, 1, 328, 618)" opacity="1">
+    <g>
+      <defs>
+        <mask id="shape_HTmN5rub6AqIs0e4ND-yl_clip">
+          <rect x="-212.40539315801647" y="-111.19381198382791" width="438.46" height="214.54" fill="white"/>
+          <path d="M -101.24339284486402 -1.1733454772632292 L -112.40539315801647 -11.193811983827914 L -98.14641444898412 -15.850154558785448" fill="none" stroke="none"/>
+        </mask>
+      </defs>
+      <g mask="url(#shape_HTmN5rub6AqIs0e4ND-yl_clip)">
+        <rect x="-100" y="-100" width="438.46" height="214.54" fill="transparent" stroke="none"/>
+        <path d="M126.0570262319568,-6.2419040541955155 A601.250492342686 601.25 0 0 1 -112.40539315801647,-11.193811983827914" fill="none" class="depgraph-stroke" stroke-width="5" stroke-dasharray="none" stroke-dashoffset="none"/>
+      </g>
+      <path d="M -101.24339284486402 -1.1733454772632292 L -112.40539315801647 -11.193811983827914 L -98.14641444898412 -15.850154558785448" fill="none" class="depgraph-stroke" stroke-width="5"/>
+    </g>
+  </g>
+  <g transform="matrix(1, 0, 0, 1, 715.83, 625.80)" opacity="1">
+    <path d="M59.5203,52.2089 Q56.8167,58.7785 50.34,62.6092 T36.4118,67.2944 21.78,65.8327 9.04,58.4642 0.45,46.5226 -2.4709,32.124 0.79,17.7672 9.67,6.0216 22.56,-1.0006 37.17,-2.0624 50.96,2.9298 61.50,13.0982 66.87,26.7417 66.17,41.398 59.60,54.4706 48.20,63.6223 34.00,67.2924 19.56,64.851 8.60,55.6157 4.61,49.1579 4.62,49.1511 9.94,52.728 20.91,58.8221 32.74,61.2247 44.51,58.5381 54.12,51.3269 59.92,40.7706 60.93,28.728 56.91,17.3738 48.52,8.7006 37.33,4.2077 25.36,4.7711 14.63,10.209 7.03,19.5401 3.92,31.1727 5.91,42.9918 12.61,52.9743 22.78,59.3636 34.65,60.9849 46.15,57.5768 56.87,50.1383 62.21,45.6334 59.52,52.2089 Z" class="depgraph-fill"/>
+  </g>
+  <g transform="matrix(1, 0, 0, 1, 729.41, 681.47)" opacity="1">
+    <g>
+      <defs>
+        <mask id="shape_X8HvbM0krabnp7OGqGHY6_clip">
+          <rect x="-300.73259218453165" y="-160.6716260639862" width="388.46" height="237.69" fill="white"/>
+          <path d="M -191.1996896308442 -49.090444392761974 L -200.73259218453163 -60.671626063986196 L -185.93654337456502 -63.13677101166893" fill="none" stroke="none"/>
+        </mask>
+      </defs>
+      <g mask="url(#shape_X8HvbM0krabnp7OGqGHY6_clip)">
+        <rect x="-100" y="-100" width="388.46" height="237.69" fill="transparent" stroke="none"/>
+        <path d="M-12.26591343011512,-22.976430069392563 A553.0034356305026 553.00 0 0 1 -200.73259218453163,-60.671626063986196" fill="none" class="depgraph-stroke" stroke-width="5" stroke-dasharray="none" stroke-dashoffset="none"/>
+      </g>
+      <path d="M -191.1996896308442 -49.090444392761974 L -200.73259218453163 -60.671626063986196 L -185.93654337456502 -63.13677101166893" fill="none" class="depgraph-stroke" stroke-width="5"/>
+    </g>
+  </g>
+  <g transform="matrix(1, 0, 0, 1, 584.47, 284.60)" opacity="1">
+    <path d="M2.5,32.5a30,30,0,1,1,60,0a30,30,0,1,1,-60,0" stroke-width="5" width="65" height="65" fill="none" class="depgraph-stroke" stroke-dasharray="0.05 11.72" stroke-dashoffset="0.02"/>
+  </g>
+  <g transform="matrix(1, 0, 0, 1, 632.37, 467.27)" opacity="1">
+    <g>
+      <defs>
+        <mask id="shape_nHJESl4NN_WuTTWJyqfHY_clip">
+          <rect x="-195.72394260943534" y="-221.43155925929767" width="268.18" height="282.03" fill="white"/>
+          <path d="M -80.9427299272046 -41.953510934189204 L -95.72394260943534 -39.40091389535576 L -90.54395014957467 -53.47811809632502" fill="none" stroke="none"/>
+        </mask>
+      </defs>
+      <g mask="url(#shape_nHJESl4NN_WuTTWJyqfHY_clip)">
+        <rect x="-100" y="-100" width="268.18" height="282.03" fill="transparent" stroke="none"/>
+        <path d="M-27.53816904171572,-121.43155925929773 A253.07224584079222 253.07 0 0 1 -95.72394260943534,-39.40091389535576" fill="none" class="depgraph-stroke" stroke-width="5" stroke-dasharray="0.05 11.88" stroke-dashoffset="0.02"/>
+      </g>
+      <path d="M -80.9427299272046 -41.953510934189204 L -95.72394260943534 -39.40091389535576 L -90.54395014957467 -53.47811809632502" fill="none" class="depgraph-stroke" stroke-width="5"/>
+    </g>
+  </g>
+  <g transform="matrix(1, 0, 0, 1, 634.37, 462.27)" opacity="1">
+    <g>
+      <defs>
+        <mask id="shape_yFE8tlO62zLgjcstlJGdC_clip">
+          <rect x="-521.5032660831482" y="-246.53192762439699" width="572.92" height="268.55" fill="white"/>
+          <path d="M -406.6691376076127 -75.74749533644881 L -421.5032660831482 -77.97204750965284 L -412.1596831513419 -89.70650352586668" fill="none" stroke="none"/>
+        </mask>
+      </defs>
+      <g mask="url(#shape_yFE8tlO62zLgjcstlJGdC_clip)">
+        <rect x="-100" y="-100" width="572.92" height="268.55" fill="transparent" stroke="none"/>
+        <path d="M-48.58239178764404,-146.34212183471578 A947.9469898655045 947.94 0 0 0 -421.5032660831482,-77.97204750965284" fill="none" class="depgraph-stroke" stroke-width="5" stroke-dasharray="0.05 10.26" stroke-dashoffset="0.02"/>
+      </g>
+      <path d="M -406.6691376076127 -75.74749533644881 L -421.5032660831482 -77.97204750965284 L -412.1596831513419 -89.70650352586668" fill="none" class="depgraph-stroke" stroke-width="5"/>
+    </g>
+  </g>
+  <g transform="matrix(1, 0, 0, 1, 1000.27, 314.49)" opacity="1">
+    <path d="M2.5,32.5a30,30,0,1,1,60,0a30,30,0,1,1,-60,0" stroke-width="5" width="65" height="65" fill="none" class="depgraph-stroke" stroke-dasharray="0.05 11.72" stroke-dashoffset="0.02"/>
+  </g>
+  <g transform="matrix(1, 0, 0, 1, 864.41, 355.47)" opacity="1">
+    <g>
+      <defs>
+        <mask id="shape_TsRedPUR0PDHnqUJLAypL_clip">
+          <rect x="-420.20684107956305" y="-98.20502879503601" width="658.09" height="294.13" fill="white"/>
+          <path d="M -306.54664670263526 102.12 L -320.20684107956305 95.93 L -308.0102443626903 87.20" fill="none" stroke="none"/>
+        </mask>
+      </defs>
+      <g mask="url(#shape_TsRedPUR0PDHnqUJLAypL_clip)">
+        <rect x="-100" y="-100" width="658.09" height="294.13" fill="transparent" stroke="none"/>
+        <path d="M137.8847061320364,1.7949712049640425 A2160.9353149781186 2160.93 0 0 1 -320.20684107956305,95.9330740147011" fill="none" class="depgraph-stroke" stroke-width="5" stroke-dasharray="0.05 10.36" stroke-dashoffset="0.02"/>
+      </g>
+      <path d="M -306.54664670263526 102.12 L -320.20684107956305 95.93 L -308.0102443626903 87.20" fill="none" class="depgraph-stroke" stroke-width="5"/>
+    </g>
+  </g>
+  <g transform="matrix(1, 0, 0, 1, 1003.95, 459.49)" opacity="1">
+    <path d="M2.5,32.5a30,30,0,1,1,60,0a30,30,0,1,1,-60,0" stroke-width="5" width="65" height="65" fill="none" class="depgraph-stroke" stroke-dasharray="0.05 11.72" stroke-dashoffset="0.02"/>
+  </g>
+  <g transform="matrix(1, 0, 0, 1, 1003.63, 601.49)" opacity="1">
+    <path d="M28.0372,65.5952 Q20.6474,66.3012 13.97,62.0741 T3.0549,51.214 -2.1314,36.7362 -0.5828,21.4317 7.35,8.2982 20.21,-0.1248 35.46,-2.1966 50.04,2.491 61.22,12.9727 66.84,27.1969 65.77,42.48 58.26,55.8226 45.74,64.6384 30.66,67.2433 15.90,63.0755 4.36,52.9984 -1.6652,38.9226 -1.1223,23.5634 7.08,11.0978 13.32,6.2273 13.33,6.2339 10.16,12.1048 5.10,24.1594 4.21,36.7705 8.77,48.5279 17.95,57.1393 29.95,60.9837 42.42,59.2934 53.00,52.4261 59.62,41.6814 60.94,29.1458 56.71,17.2526 47.82,8.3064 35.97,4.1167 23.44,5.4461 12.70,11.9781 5.81,22.4626 4.08,34.9037 7.91,46.866 16.50,56.0599 28.62,62.2925 35.42,64.8793 28.03,65.5952 Z" class="depgraph-fill"/>
+  </g>
+  <g transform="matrix(1, 0, 0, 1, 882.41, 636.47)" opacity="1">
+    <g>
+      <defs>
+        <mask id="shape_P2YkL8fQuzD6-zEjB6MQj_clip">
+          <rect x="-187.4060785800255" y="-99.78544777762056" width="409.94" height="217.72" fill="white"/>
+          <path d="M -73.83063559233113 24.32 L -87.4060785800255 17.94 L -75.09291495310923 9.37" fill="none" stroke="none"/>
+        </mask>
+      </defs>
+      <g mask="url(#shape_P2YkL8fQuzD6-zEjB6MQj_clip)">
+        <rect x="-100" y="-100" width="409.94" height="217.72" fill="transparent" stroke="none"/>
+        <path d="M122.53634194940537,0.21455222237943872L-87.4060785800255,17.94450718285517" fill="none" class="depgraph-stroke" stroke-width="5" stroke-dasharray="none" stroke-dashoffset="none"/>
+      </g>
+      <path d="M -73.83063559233113 24.32 L -87.4060785800255 17.94 L -75.09291495310923 9.37" fill="none" class="depgraph-stroke" stroke-width="5"/>
+    </g>
+  </g>
+  <g transform="matrix(1, 0, 0, 1, 719.52, 511.80)" opacity="1">
+    <path d="M2.5,32.5a30,30,0,1,1,60,0a30,30,0,1,1,-60,0" stroke-width="5" width="65" height="65" fill="none" class="depgraph-stroke" stroke-dasharray="0.05 11.72" stroke-dashoffset="0.02"/>
+  </g>
+  <g transform="matrix(1, 0, 0, 1, 874.41, 499.47)" opacity="1">
+    <g>
+      <defs>
+        <mask id="shape_k4splTVG2geIjq4HtRLIZ_clip">
+          <rect x="-181.05200135704428" y="-113.35661894464982" width="411.90" height="235.58" fill="white"/>
+          <path d="M -66.18589226619696 24.23 L -81.05200135704426 22.23 L -71.8871557231026 10.35" fill="none" stroke="none"/>
+        </mask>
+      </defs>
+      <g mask="url(#shape_k4splTVG2geIjq4HtRLIZ_clip)">
+        <rect x="-100" y="-100" width="411.90" height="235.58" fill="transparent" stroke="none"/>
+        <path d="M130.85282030693406,-11.562404332465746 A435.43967645474123 435.43 0 0 0 -81.05200135704426,22.232672416289176" fill="none" class="depgraph-stroke" stroke-width="5" stroke-dasharray="0.05 10.78" stroke-dashoffset="0.02"/>
+      </g>
+      <path d="M -66.18589226619696 24.23 L -81.05200135704426 22.23 L -71.8871557231026 10.35" fill="none" class="depgraph-stroke" stroke-width="5"/>
+    </g>
+  </g>
+  <g transform="matrix(1, 0, 0, 1, 736.41, 560.47)" opacity="1">
+    <g>
+      <defs>
+        <mask id="shape_KtvuH4OpWM5Lw9lw_RZEH_clip">
+          <rect x="-293.9105421586628" y="-199.03338266976482" width="382.47" height="267.25" fill="white"/>
+          <path d="M -182.9319704023163 -88.81227890398932 L -193.91054215866282 -99.03338266976482 L -179.56952076461118 -103.43055282514351" fill="none" stroke="none"/>
+        </mask>
+      </defs>
+      <g mask="url(#shape_KtvuH4OpWM5Lw9lw_RZEH_clip)">
+        <rect x="-100" y="-100" width="382.47" height="267.25" fill="transparent" stroke="none"/>
+        <path d="M-11.436232625878006,-31.77705454537511 A708.7585526134293 708.75 0 0 0 -193.91054215866282,-99.03338266976482" fill="none" class="depgraph-stroke" stroke-width="5" stroke-dasharray="0.05 10.78" stroke-dashoffset="0.02"/>
+      </g>
+      <path d="M -182.9319704023163 -88.81227890398932 L -193.91054215866282 -99.03338266976482 L -179.56952076461118 -103.43055282514351" fill="none" class="depgraph-stroke" stroke-width="5"/>
+    </g>
+  </g>
+  <g transform="matrix(1, 0, 0, 1, 731.41, 557.47)" opacity="1">
+    <g>
+      <defs>
+        <mask id="shape_x8qwKV53Nq7KFYiDWZQd5_clip">
+          <rect x="-300.3559904798832" y="-99.83607108036148" width="392.45" height="241.57" fill="white"/>
+          <path d="M -187.07055735483164 48.69 L -200.35599047988316 41.73 L -187.6822748284968 33.71" fill="none" stroke="none"/>
+        </mask>
+      </defs>
+      <g mask="url(#shape_x8qwKV53Nq7KFYiDWZQd5_clip)">
+        <rect x="-100" y="-100" width="392.45" height="241.57" fill="transparent" stroke="none"/>
+        <path d="M-7.8981140537617875,0.16392891963846523 A532.2605680375101 532.26 0 0 1 -200.35599047988316,41.73545178341624" fill="none" class="depgraph-stroke" stroke-width="5" stroke-dasharray="none" stroke-dashoffset="none"/>
+      </g>
+      <path d="M -187.07055735483164 48.69 L -200.35599047988316 41.73 L -187.6822748284968 33.71" fill="none" class="depgraph-stroke" stroke-width="5"/>
+    </g>
+  </g>
+  <g transform="matrix(1, 0, 0, 1, 153.70, 402.51)" opacity="1">
+    <g>
+      <text font-size="24px" font-family="ui-monospace, monospace" font-style="normal" font-weight="normal" line-height="32.400000000000006px" dominant-baseline="mathematical" alignment-baseline="mathematical"  stroke-width="2px" class="depgraph-fill">
+        <tspan alignment-baseline="mathematical" x="0px" y="12px">A1</tspan>
+      </text>
+      <text font-size="24px" font-family="ui-monospace, monospace" font-style="normal" font-weight="normal" line-height="32.400000000000006px" dominant-baseline="mathematical" alignment-baseline="mathematical" stroke="none" stroke-width="2px" class="depgraph-fill">
+        <tspan alignment-baseline="mathematical" x="0px" y="12px">A1</tspan>
+      </text>
+    </g>
+  </g>
+  <g transform="matrix(1, 0, 0, 1, 148.70, 493.92)" opacity="1">
+    <g>
+      <text font-size="24px" font-family="ui-monospace, monospace" font-style="normal" font-weight="normal" line-height="32.400000000000006px" dominant-baseline="mathematical" alignment-baseline="mathematical"  stroke-width="2px" class="depgraph-fill">
+        <tspan alignment-baseline="mathematical" x="0px" y="12px">A2</tspan>
+      </text>
+      <text font-size="24px" font-family="ui-monospace, monospace" font-style="normal" font-weight="normal" line-height="32.400000000000006px" dominant-baseline="mathematical" alignment-baseline="mathematical" stroke="none" stroke-width="2px" class="depgraph-fill">
+        <tspan alignment-baseline="mathematical" x="0px" y="12px">A2</tspan>
+      </text>
+    </g>
+  </g>
+  <g transform="matrix(1, 0, 0, 1, 158.04, 579.96)" opacity="1">
+    <g>
+      <text font-size="24px" font-family="ui-monospace, monospace" font-style="normal" font-weight="normal" line-height="32.400000000000006px" dominant-baseline="mathematical" alignment-baseline="mathematical"  stroke-width="2px" class="depgraph-fill">
+        <tspan alignment-baseline="mathematical" x="0px" y="12px">A3</tspan>
+      </text>
+      <text font-size="24px" font-family="ui-monospace, monospace" font-style="normal" font-weight="normal" line-height="32.400000000000006px" dominant-baseline="mathematical" alignment-baseline="mathematical" stroke="none" stroke-width="2px" class="depgraph-fill">
+        <tspan alignment-baseline="mathematical" x="0px" y="12px">A3</tspan>
+      </text>
+    </g>
+  </g>
+  <g transform="matrix(1, 0, 0, 1, 602.94, 300.34)" opacity="1">
+    <g>
+      <text font-size="24px" font-family="ui-monospace, monospace" font-style="normal" font-weight="normal" line-height="32.400000000000006px" dominant-baseline="mathematical" alignment-baseline="mathematical"  stroke-width="2px" class="depgraph-fill">
+        <tspan alignment-baseline="mathematical" x="0px" y="12px">C3</tspan>
+      </text>
+      <text font-size="24px" font-family="ui-monospace, monospace" font-style="normal" font-weight="normal" line-height="32.400000000000006px" dominant-baseline="mathematical" alignment-baseline="mathematical" stroke="none" stroke-width="2px" class="depgraph-fill">
+        <tspan alignment-baseline="mathematical" x="0px" y="12px">C3</tspan>
+      </text>
+    </g>
+  </g>
+  <g transform="matrix(1, 0, 0, 1, 737.76, 526.18)" opacity="1">
+    <g>
+      <text font-size="24px" font-family="ui-monospace, monospace" font-style="normal" font-weight="normal" line-height="32.400000000000006px" dominant-baseline="mathematical" alignment-baseline="mathematical"  stroke-width="2px" class="depgraph-fill">
+        <tspan alignment-baseline="mathematical" x="0px" y="12px">C4</tspan>
+      </text>
+      <text font-size="24px" font-family="ui-monospace, monospace" font-style="normal" font-weight="normal" line-height="32.400000000000006px" dominant-baseline="mathematical" alignment-baseline="mathematical" stroke="none" stroke-width="2px" class="depgraph-fill">
+        <tspan alignment-baseline="mathematical" x="0px" y="12px">C4</tspan>
+      </text>
+    </g>
+  </g>
+  <g transform="matrix(1, 0, 0, 1, 732.76, 642.69)" opacity="1">
+    <g>
+      <text font-size="24px" font-family="ui-monospace, monospace" font-style="normal" font-weight="normal" line-height="32.400000000000006px" dominant-baseline="mathematical" alignment-baseline="mathematical"  stroke-width="2px" class="depgraph-fill">
+        <tspan alignment-baseline="mathematical" x="0px" y="12px">C5</tspan>
+      </text>
+      <text font-size="24px" font-family="ui-monospace, monospace" font-style="normal" font-weight="normal" line-height="32.400000000000006px" dominant-baseline="mathematical" alignment-baseline="mathematical" stroke="none" stroke-width="2px" class="depgraph-fill">
+        <tspan alignment-baseline="mathematical" x="0px" y="12px">C5</tspan>
+      </text>
+    </g>
+  </g>
+  <g transform="matrix(1, 0, 0, 1, 1016.34, 329.02)" opacity="1">
+    <g>
+      <text font-size="24px" font-family="ui-monospace, monospace" font-style="normal" font-weight="normal" line-height="32.400000000000006px" dominant-baseline="mathematical" alignment-baseline="mathematical"  stroke-width="2px" class="depgraph-fill">
+        <tspan alignment-baseline="mathematical" x="0px" y="12px">C6</tspan>
+      </text>
+      <text font-size="24px" font-family="ui-monospace, monospace" font-style="normal" font-weight="normal" line-height="32.400000000000006px" dominant-baseline="mathematical" alignment-baseline="mathematical" stroke="none" stroke-width="2px" class="depgraph-fill">
+        <tspan alignment-baseline="mathematical" x="0px" y="12px">C6</tspan>
+      </text>
+    </g>
+  </g>
+  <g transform="matrix(1, 0, 0, 1, 1022.10, 477.79)" opacity="1">
+    <g>
+      <text font-size="24px" font-family="ui-monospace, monospace" font-style="normal" font-weight="normal" line-height="32.400000000000006px" dominant-baseline="mathematical" alignment-baseline="mathematical"  stroke-width="2px" class="depgraph-fill">
+        <tspan alignment-baseline="mathematical" x="0px" y="12px">C7</tspan>
+      </text>
+      <text font-size="24px" font-family="ui-monospace, monospace" font-style="normal" font-weight="normal" line-height="32.400000000000006px" dominant-baseline="mathematical" alignment-baseline="mathematical" stroke="none" stroke-width="2px" class="depgraph-fill">
+        <tspan alignment-baseline="mathematical" x="0px" y="12px">C7</tspan>
+      </text>
+    </g>
+  </g>
+  <g transform="matrix(1, 0, 0, 1, 1020.68, 615.81)" opacity="1">
+    <g>
+      <text font-size="24px" font-family="ui-monospace, monospace" font-style="normal" font-weight="normal" line-height="32.400000000000006px" dominant-baseline="mathematical" alignment-baseline="mathematical"  stroke-width="2px" class="depgraph-fill">
+        <tspan alignment-baseline="mathematical" x="0px" y="12px">C8</tspan>
+      </text>
+      <text font-size="24px" font-family="ui-monospace, monospace" font-style="normal" font-weight="normal" line-height="32.400000000000006px" dominant-baseline="mathematical" alignment-baseline="mathematical" stroke="none" stroke-width="2px" class="depgraph-fill">
+        <tspan alignment-baseline="mathematical" x="0px" y="12px">C8</tspan>
+      </text>
+    </g>
+  </g>
+  <g transform="matrix(1, 0, 0, 1, 481.44, 436.56)" opacity="1">
+    <g>
+      <text font-size="24px" font-family="ui-monospace, monospace" font-style="normal" font-weight="normal" line-height="32.400000000000006px" dominant-baseline="mathematical" alignment-baseline="mathematical"  stroke-width="2px" class="depgraph-fill">
+        <tspan alignment-baseline="mathematical" x="0px" y="12px">C1</tspan>
+      </text>
+      <text font-size="24px" font-family="ui-monospace, monospace" font-style="normal" font-weight="normal" line-height="32.400000000000006px" dominant-baseline="mathematical" alignment-baseline="mathematical" stroke="none" stroke-width="2px" class="depgraph-fill">
+        <tspan alignment-baseline="mathematical" x="0px" y="12px">C1</tspan>
+      </text>
+    </g>
+  </g>
+  <g transform="matrix(1, 0, 0, 1, 471.06, 588.92)" opacity="1">
+    <g>
+      <text font-size="24px" font-family="ui-monospace, monospace" font-style="normal" font-weight="normal" line-height="32.400000000000006px" dominant-baseline="mathematical" alignment-baseline="mathematical"  stroke-width="2px" class="depgraph-fill">
+        <tspan alignment-baseline="mathematical" x="0px" y="12px">C2</tspan>
+      </text>
+      <text font-size="24px" font-family="ui-monospace, monospace" font-style="normal" font-weight="normal" line-height="32.400000000000006px" dominant-baseline="mathematical" alignment-baseline="mathematical" stroke="none" stroke-width="2px" class="depgraph-fill">
+        <tspan alignment-baseline="mathematical" x="0px" y="12px">C2</tspan>
+      </text>
+    </g>
+  </g>
+</svg>
+
+</div>
+<ol start="2">
+<li><p>The <code>Atom</code> stores its new value.</p></li>
+<li><p>The <code>Atom</code> notifies all its dependents that it is fresh. When
+a <code>Calc</code> is notified that one of its dependencies has become fresh,
+it recalculates <em>if and only if</em> all of its dependencies are now
+fresh.</p></li>
+</ol>
+<div class="frame75 pin-to-above">
+<?xml version="1.0"?>
+<svg xmlns="http://www.w3.org/2000/svg" direction="ltr" viewBox="100 252.93 1000.95 469.53" stroke-linecap="round" stroke-linejoin="round" style="background-color: transparent;">
+  <g transform="matrix(1, 0, 0, 1, 139, 390)" opacity="1">
+    <path d="M9.9967,-0.2567 L51.3355,-1.3183 Q61.3322,-1.575 60.87,8.4146 L59.0559,48.3899 Q58.6008,58.3795 48.60,58.4725 L11.3257,58.8192 Q1.3261,58.9122 1.34,48.9122 L1.4035,8.9598 Q1.419,-1.0401 11.41,-0.8063 L50.2158,0.1012 Q60.2131,0.335 59.98,10.3325 L59.101,49.8786 Q58.8766,59.8761 48.87,59.7611 L10.1047,59.3154 Q0.1053,59.2004 -0.1135,49.2028 L-0.9929,9.0194 Q-1.2117,-0.9782 9.99,-0.2567 " fill="none" stroke="#099268" stroke-width="5"/>
+  </g>
+  <g transform="matrix(1, 0, 0, 1, 132, 478)" opacity="1">
+    <path d="M9.9986,-0.1697 L51.0858,-0.867 Q61.0844,-1.0366 61.10,8.9633 L61.1806,50.7522 Q61.1992,60.7522 51.20,60.5965 L11.0935,59.972 Q1.0947,59.8164 1.12,49.8164 L1.2335,11.5732 Q1.2622,1.5733 11.26,1.5248 L49.0709,1.3413 Q59.0708,1.2928 58.95,11.2921 L58.4866,51.1749 Q58.3695,61.1742 48.37,60.8899 L9.985,59.7981 Q-0.0109,59.5138 0.21,49.5164 L1.0929,11.0878 Q1.3208,1.0904 9.99,-0.1697 " fill="none" class="depgraph-stroke" stroke-width="5"/>
+  </g>
+  <g transform="matrix(1, 0, 0, 1, 141, 565)" opacity="1">
+    <path d="M10,-0.0282 L51.6537,-0.1459 Q61.6536,-0.1742 61.50,9.8248 L60.9405,49.1038 Q60.7959,59.1028 50.79,59.3734 L10.7559,60.4573 Q0.7596,60.7279 0.61,50.729 L-0.0191,8.4804 Q-0.1681,-1.5185 9.82,-1.2201 L50.3738,-0.0098 Q60.3693,0.2886 60.51,10.2875 L61.0778,49.4966 Q61.2217,59.4955 51.22,59.825 L10.5247,61.1668 Q0.5302,61.4963 0.19,51.5018 L-1.1501,10.925 Q-1.4822,0.9305 10,-0.0282 " fill="none" class="depgraph-stroke" stroke-width="5"/>
+  </g>
+  <g transform="matrix(1, 0, 0, 1, 464.37, 420.60)" opacity="1">
+    <path d="M2.5,32.5a30,30,0,1,1,60,0a30,30,0,1,1,-60,0" stroke-width="5" width="65" height="65" fill="none" stroke="#099268" stroke-dasharray="11.78 11.78" stroke-dashoffset="5.89"/>
+  </g>
+  <g transform="matrix(1, 0, 0, 1, 328, 416)" opacity="1">
+    <g>
+      <defs>
+        <mask id="shape_S-Uus0NFmYGYezjroerrN_clip">
+          <rect x="-221.00947280945599" y="-53.586667418074285" width="458.79" height="240.79" fill="white"/>
+          <path d="M -107.67132256333163 94.06 L -121.00947280945597 87.20 L -108.39730833750632 79.08" fill="none" stroke="none"/>
+        </mask>
+      </defs>
+      <g mask="url(#shape_S-Uus0NFmYGYezjroerrN_clip)">
+        <rect x="-100" y="-100" width="458.79" height="240.79" fill="transparent" stroke="none"/>
+        <path d="M137.78735921321334,46.41333258192577 A1146.9865798805959 1146.98 0 0 1 -121.00947280945597,87.20590878763483" fill="none" class="depgraph-stroke" stroke-width="5" stroke-dasharray="none" stroke-dashoffset="none"/>
+      </g>
+      <path d="M -107.67132256333163 94.06 L -121.00947280945597 87.20 L -108.39730833750632 79.08" fill="none" class="depgraph-stroke" stroke-width="5"/>
+    </g>
+  </g>
+  <g transform="matrix(1, 0, 0, 1, 333, 422)" opacity="1">
+    <g>
+      <defs>
+        <mask id="shape_MuWr9XOb2cbTfhnwf_mlb_clip">
+          <rect x="-219.0022369565704" y="-98.712730774781" width="451.69" height="223.13" fill="white"/>
+          <path d="M -105.97606087952738 8.78 L -119.00223695657043 1.34 L -106.04794929318058 -6.216779852340175" fill="none" stroke="none"/>
+        </mask>
+      </defs>
+      <g mask="url(#shape_MuWr9XOb2cbTfhnwf_mlb_clip)">
+        <rect x="-100" y="-100" width="451.69" height="223.13" fill="transparent" stroke="none"/>
+        <path d="M132.6899829470144,24.42296476960871 A1237.6474787048699 1237.64 0 0 0 -119.00223695657043,1.3453912072263847" fill="none" stroke="#099268" stroke-width="5" stroke-dasharray="10.12 10.96" stroke-dashoffset="5"/>
+      </g>
+      <path d="M -105.97606087952738 8.78 L -119.00223695657043 1.34 L -106.04794929318058 -6.216779852340175" fill="none" stroke="#099268" stroke-width="5"/>
+    </g>
+  </g>
+  <g transform="matrix(1, 0, 0, 1, 452.74, 572.60)" opacity="1">
+    <path d="M65.5588,27.6212 Q68.2476,34.3734 66.20,41.814 T59.1942,55.1351 47.20,64.2391 32.47,67.4478 17.79,64.2083 5.82,55.0737 -1.156,41.7445 -1.8371,26.7711 3.80,12.8802 14.75,2.6285 28.99,-2.0635 43.85,-0.3472 56.63,7.454 64.93,19.9229 67.24,34.7299 63.14,49.1313 53.31,60.4278 39.64,66.5847 25.09,64.8856 18.02,61.5655 18.02,61.5558 24.60,61.7074 37.38,60.748 48.78,56.0522 57.17,47.0514 60.99,35.3393 59.57,23.0675 53.11,12.5411 42.79,5.6886 30.57,3.8102 18.68,7.2999 9.41,15.4857 4.47,26.7881 4.69,39.0591 10.05,50.1267 19.55,57.9436 31.44,61.0334 43.56,58.8511 53.60,51.7769 59.71,41.1169 62.22,27.9865 62.86,20.8705 65.55,27.6212 Z" class="depgraph-fill"/>
+  </g>
+  <g transform="matrix(1, 0, 0, 1, 328, 618)" opacity="1">
+    <g>
+      <defs>
+        <mask id="shape_HTmN5rub6AqIs0e4ND-yl_clip">
+          <rect x="-212.40539315801647" y="-111.19381198382791" width="438.46" height="214.54" fill="white"/>
+          <path d="M -101.24339284486402 -1.1733454772632292 L -112.40539315801647 -11.193811983827914 L -98.14641444898412 -15.850154558785448" fill="none" stroke="none"/>
+        </mask>
+      </defs>
+      <g mask="url(#shape_HTmN5rub6AqIs0e4ND-yl_clip)">
+        <rect x="-100" y="-100" width="438.46" height="214.54" fill="transparent" stroke="none"/>
+        <path d="M126.0570262319568,-6.2419040541955155 A601.250492342686 601.25 0 0 1 -112.40539315801647,-11.193811983827914" fill="none" class="depgraph-stroke" stroke-width="5" stroke-dasharray="none" stroke-dashoffset="none"/>
+      </g>
+      <path d="M -101.24339284486402 -1.1733454772632292 L -112.40539315801647 -11.193811983827914 L -98.14641444898412 -15.850154558785448" fill="none" class="depgraph-stroke" stroke-width="5"/>
+    </g>
+  </g>
+  <g transform="matrix(1, 0, 0, 1, 715.83, 625.80)" opacity="1">
+    <path d="M59.5203,52.2089 Q56.8167,58.7785 50.34,62.6092 T36.4118,67.2944 21.78,65.8327 9.04,58.4642 0.45,46.5226 -2.4709,32.124 0.79,17.7672 9.67,6.0216 22.56,-1.0006 37.17,-2.0624 50.96,2.9298 61.50,13.0982 66.87,26.7417 66.17,41.398 59.60,54.4706 48.20,63.6223 34.00,67.2924 19.56,64.851 8.60,55.6157 4.61,49.1579 4.62,49.1511 9.94,52.728 20.91,58.8221 32.74,61.2247 44.51,58.5381 54.12,51.3269 59.92,40.7706 60.93,28.728 56.91,17.3738 48.52,8.7006 37.33,4.2077 25.36,4.7711 14.63,10.209 7.03,19.5401 3.92,31.1727 5.91,42.9918 12.61,52.9743 22.78,59.3636 34.65,60.9849 46.15,57.5768 56.87,50.1383 62.21,45.6334 59.52,52.2089 Z" class="depgraph-fill"/>
+  </g>
+  <g transform="matrix(1, 0, 0, 1, 729.41, 681.47)" opacity="1">
+    <g>
+      <defs>
+        <mask id="shape_X8HvbM0krabnp7OGqGHY6_clip">
+          <rect x="-300.73259218453165" y="-160.6716260639862" width="388.46" height="237.69" fill="white"/>
+          <path d="M -191.1996896308442 -49.090444392761974 L -200.73259218453163 -60.671626063986196 L -185.93654337456502 -63.13677101166893" fill="none" stroke="none"/>
+        </mask>
+      </defs>
+      <g mask="url(#shape_X8HvbM0krabnp7OGqGHY6_clip)">
+        <rect x="-100" y="-100" width="388.46" height="237.69" fill="transparent" stroke="none"/>
+        <path d="M-12.26591343011512,-22.976430069392563 A553.0034356305026 553.00 0 0 1 -200.73259218453163,-60.671626063986196" fill="none" class="depgraph-stroke" stroke-width="5" stroke-dasharray="none" stroke-dashoffset="none"/>
+      </g>
+      <path d="M -191.1996896308442 -49.090444392761974 L -200.73259218453163 -60.671626063986196 L -185.93654337456502 -63.13677101166893" fill="none" class="depgraph-stroke" stroke-width="5"/>
+    </g>
+  </g>
+  <g transform="matrix(1, 0, 0, 1, 584.47, 284.60)" opacity="1">
+    <path d="M2.5,32.5a30,30,0,1,1,60,0a30,30,0,1,1,-60,0" stroke-width="5" width="65" height="65" fill="none" class="depgraph-stroke" stroke-dasharray="0.05 11.72" stroke-dashoffset="0.02"/>
+  </g>
+  <g transform="matrix(1, 0, 0, 1, 632.37, 467.27)" opacity="1">
+    <g>
+      <defs>
+        <mask id="shape_nHJESl4NN_WuTTWJyqfHY_clip">
+          <rect x="-195.72394260943534" y="-221.43155925929767" width="268.18" height="282.03" fill="white"/>
+          <path d="M -80.9427299272046 -41.953510934189204 L -95.72394260943534 -39.40091389535576 L -90.54395014957467 -53.47811809632502" fill="none" stroke="none"/>
+        </mask>
+      </defs>
+      <g mask="url(#shape_nHJESl4NN_WuTTWJyqfHY_clip)">
+        <rect x="-100" y="-100" width="268.18" height="282.03" fill="transparent" stroke="none"/>
+        <path d="M-27.53816904171572,-121.43155925929773 A253.07224584079222 253.07 0 0 1 -95.72394260943534,-39.40091389535576" fill="none" class="depgraph-stroke" stroke-width="5" stroke-dasharray="0.05 11.88" stroke-dashoffset="0.02"/>
+      </g>
+      <path d="M -80.9427299272046 -41.953510934189204 L -95.72394260943534 -39.40091389535576 L -90.54395014957467 -53.47811809632502" fill="none" class="depgraph-stroke" stroke-width="5"/>
+    </g>
+  </g>
+  <g transform="matrix(1, 0, 0, 1, 634.37, 462.27)" opacity="1">
+    <g>
+      <defs>
+        <mask id="shape_yFE8tlO62zLgjcstlJGdC_clip">
+          <rect x="-521.5032660831482" y="-246.53192762439699" width="572.92" height="268.55" fill="white"/>
+          <path d="M -406.6691376076127 -75.74749533644881 L -421.5032660831482 -77.97204750965284 L -412.1596831513419 -89.70650352586668" fill="none" stroke="none"/>
+        </mask>
+      </defs>
+      <g mask="url(#shape_yFE8tlO62zLgjcstlJGdC_clip)">
+        <rect x="-100" y="-100" width="572.92" height="268.55" fill="transparent" stroke="none"/>
+        <path d="M-48.58239178764404,-146.34212183471578 A947.9469898655045 947.94 0 0 0 -421.5032660831482,-77.97204750965284" fill="none" stroke="#099268" stroke-width="5" stroke-dasharray="10.30 10.88" stroke-dashoffset="5"/>
+      </g>
+      <path d="M -406.6691376076127 -75.74749533644881 L -421.5032660831482 -77.97204750965284 L -412.1596831513419 -89.70650352586668" fill="none" stroke="#099268" stroke-width="5"/>
+    </g>
+  </g>
+  <g transform="matrix(1, 0, 0, 1, 1000.27, 314.49)" opacity="1">
+    <path d="M2.5,32.5a30,30,0,1,1,60,0a30,30,0,1,1,-60,0" stroke-width="5" width="65" height="65" fill="none" class="depgraph-stroke" stroke-dasharray="0.05 11.72" stroke-dashoffset="0.02"/>
+  </g>
+  <g transform="matrix(1, 0, 0, 1, 864.41, 355.47)" opacity="1">
+    <g>
+      <defs>
+        <mask id="shape_TsRedPUR0PDHnqUJLAypL_clip">
+          <rect x="-420.20684107956305" y="-98.20502879503601" width="658.09" height="294.13" fill="white"/>
+          <path d="M -306.54664670263526 102.12 L -320.20684107956305 95.93 L -308.0102443626903 87.20" fill="none" stroke="none"/>
+        </mask>
+      </defs>
+      <g mask="url(#shape_TsRedPUR0PDHnqUJLAypL_clip)">
+        <rect x="-100" y="-100" width="658.09" height="294.13" fill="transparent" stroke="none"/>
+        <path d="M137.8847061320364,1.7949712049640425 A2160.9353149781186 2160.93 0 0 1 -320.20684107956305,95.9330740147011" fill="none" class="depgraph-stroke" stroke-width="5" stroke-dasharray="0.05 10.36" stroke-dashoffset="0.02"/>
+      </g>
+      <path d="M -306.54664670263526 102.12 L -320.20684107956305 95.93 L -308.0102443626903 87.20" fill="none" class="depgraph-stroke" stroke-width="5"/>
+    </g>
+  </g>
+  <g transform="matrix(1, 0, 0, 1, 1003.95, 459.49)" opacity="1">
+    <path d="M2.5,32.5a30,30,0,1,1,60,0a30,30,0,1,1,-60,0" stroke-width="5" width="65" height="65" fill="none" class="depgraph-stroke" stroke-dasharray="0.05 11.72" stroke-dashoffset="0.02"/>
+  </g>
+  <g transform="matrix(1, 0, 0, 1, 1003.63, 601.49)" opacity="1">
+    <path d="M28.0372,65.5952 Q20.6474,66.3012 13.97,62.0741 T3.0549,51.214 -2.1314,36.7362 -0.5828,21.4317 7.35,8.2982 20.21,-0.1248 35.46,-2.1966 50.04,2.491 61.22,12.9727 66.84,27.1969 65.77,42.48 58.26,55.8226 45.74,64.6384 30.66,67.2433 15.90,63.0755 4.36,52.9984 -1.6652,38.9226 -1.1223,23.5634 7.08,11.0978 13.32,6.2273 13.33,6.2339 10.16,12.1048 5.10,24.1594 4.21,36.7705 8.77,48.5279 17.95,57.1393 29.95,60.9837 42.42,59.2934 53.00,52.4261 59.62,41.6814 60.94,29.1458 56.71,17.2526 47.82,8.3064 35.97,4.1167 23.44,5.4461 12.70,11.9781 5.81,22.4626 4.08,34.9037 7.91,46.866 16.50,56.0599 28.62,62.2925 35.42,64.8793 28.03,65.5952 Z" class="depgraph-fill"/>
+  </g>
+  <g transform="matrix(1, 0, 0, 1, 882.41, 636.47)" opacity="1">
+    <g>
+      <defs>
+        <mask id="shape_P2YkL8fQuzD6-zEjB6MQj_clip">
+          <rect x="-187.4060785800255" y="-99.78544777762056" width="409.94" height="217.72" fill="white"/>
+          <path d="M -73.83063559233113 24.32 L -87.4060785800255 17.94 L -75.09291495310923 9.37" fill="none" stroke="none"/>
+        </mask>
+      </defs>
+      <g mask="url(#shape_P2YkL8fQuzD6-zEjB6MQj_clip)">
+        <rect x="-100" y="-100" width="409.94" height="217.72" fill="transparent" stroke="none"/>
+        <path d="M122.53634194940537,0.21455222237943872L-87.4060785800255,17.94450718285517" fill="none" class="depgraph-stroke" stroke-width="5" stroke-dasharray="none" stroke-dashoffset="none"/>
+      </g>
+      <path d="M -73.83063559233113 24.32 L -87.4060785800255 17.94 L -75.09291495310923 9.37" fill="none" class="depgraph-stroke" stroke-width="5"/>
+    </g>
+  </g>
+  <g transform="matrix(1, 0, 0, 1, 719.52, 511.80)" opacity="1">
+    <path d="M2.5,32.5a30,30,0,1,1,60,0a30,30,0,1,1,-60,0" stroke-width="5" width="65" height="65" fill="none" class="depgraph-stroke" stroke-dasharray="0.05 11.72" stroke-dashoffset="0.02"/>
+  </g>
+  <g transform="matrix(1, 0, 0, 1, 874.41, 499.47)" opacity="1">
+    <g>
+      <defs>
+        <mask id="shape_k4splTVG2geIjq4HtRLIZ_clip">
+          <rect x="-181.05200135704428" y="-113.35661894464982" width="411.90" height="235.58" fill="white"/>
+          <path d="M -66.18589226619696 24.23 L -81.05200135704426 22.23 L -71.8871557231026 10.35" fill="none" stroke="none"/>
+        </mask>
+      </defs>
+      <g mask="url(#shape_k4splTVG2geIjq4HtRLIZ_clip)">
+        <rect x="-100" y="-100" width="411.90" height="235.58" fill="transparent" stroke="none"/>
+        <path d="M130.85282030693406,-11.562404332465746 A435.43967645474123 435.43 0 0 0 -81.05200135704426,22.232672416289176" fill="none" class="depgraph-stroke" stroke-width="5" stroke-dasharray="0.05 10.78" stroke-dashoffset="0.02"/>
+      </g>
+      <path d="M -66.18589226619696 24.23 L -81.05200135704426 22.23 L -71.8871557231026 10.35" fill="none" class="depgraph-stroke" stroke-width="5"/>
+    </g>
+  </g>
+  <g transform="matrix(1, 0, 0, 1, 736.41, 560.47)" opacity="1">
+    <g>
+      <defs>
+        <mask id="shape_KtvuH4OpWM5Lw9lw_RZEH_clip">
+          <rect x="-293.9105421586628" y="-199.03338266976482" width="382.47" height="267.25" fill="white"/>
+          <path d="M -182.9319704023163 -88.81227890398932 L -193.91054215866282 -99.03338266976482 L -179.56952076461118 -103.43055282514351" fill="none" stroke="none"/>
+        </mask>
+      </defs>
+      <g mask="url(#shape_KtvuH4OpWM5Lw9lw_RZEH_clip)">
+        <rect x="-100" y="-100" width="382.47" height="267.25" fill="transparent" stroke="none"/>
+        <path d="M-11.436232625878006,-31.77705454537511 A708.7585526134293 708.75 0 0 0 -193.91054215866282,-99.03338266976482" fill="none" class="depgraph-stroke" stroke-width="5" stroke-dasharray="0.05 10.78" stroke-dashoffset="0.02"/>
+      </g>
+      <path d="M -182.9319704023163 -88.81227890398932 L -193.91054215866282 -99.03338266976482 L -179.56952076461118 -103.43055282514351" fill="none" class="depgraph-stroke" stroke-width="5"/>
+    </g>
+  </g>
+  <g transform="matrix(1, 0, 0, 1, 731.41, 557.47)" opacity="1">
+    <g>
+      <defs>
+        <mask id="shape_x8qwKV53Nq7KFYiDWZQd5_clip">
+          <rect x="-300.3559904798832" y="-99.83607108036148" width="392.45" height="241.57" fill="white"/>
+          <path d="M -187.07055735483164 48.69 L -200.35599047988316 41.73 L -187.6822748284968 33.71" fill="none" stroke="none"/>
+        </mask>
+      </defs>
+      <g mask="url(#shape_x8qwKV53Nq7KFYiDWZQd5_clip)">
+        <rect x="-100" y="-100" width="392.45" height="241.57" fill="transparent" stroke="none"/>
+        <path d="M-7.8981140537617875,0.16392891963846523 A532.2605680375101 532.26 0 0 1 -200.35599047988316,41.73545178341624" fill="none" class="depgraph-stroke" stroke-width="5" stroke-dasharray="none" stroke-dashoffset="none"/>
+      </g>
+      <path d="M -187.07055735483164 48.69 L -200.35599047988316 41.73 L -187.6822748284968 33.71" fill="none" class="depgraph-stroke" stroke-width="5"/>
+    </g>
+  </g>
+  <g transform="matrix(1, 0, 0, 1, 153.70, 402.51)" opacity="1">
+    <g>
+      <text font-size="24px" font-family="ui-monospace, monospace" font-style="normal" font-weight="normal" line-height="32.400000000000006px" dominant-baseline="mathematical" alignment-baseline="mathematical"  stroke-width="2px" class="depgraph-fill">
+        <tspan alignment-baseline="mathematical" x="0px" y="12px">A1</tspan>
+      </text>
+      <text font-size="24px" font-family="ui-monospace, monospace" font-style="normal" font-weight="normal" line-height="32.400000000000006px" dominant-baseline="mathematical" alignment-baseline="mathematical" stroke="none" stroke-width="2px" class="depgraph-fill">
+        <tspan alignment-baseline="mathematical" x="0px" y="12px">A1</tspan>
+      </text>
+    </g>
+  </g>
+  <g transform="matrix(1, 0, 0, 1, 148.70, 493.92)" opacity="1">
+    <g>
+      <text font-size="24px" font-family="ui-monospace, monospace" font-style="normal" font-weight="normal" line-height="32.400000000000006px" dominant-baseline="mathematical" alignment-baseline="mathematical"  stroke-width="2px" class="depgraph-fill">
+        <tspan alignment-baseline="mathematical" x="0px" y="12px">A2</tspan>
+      </text>
+      <text font-size="24px" font-family="ui-monospace, monospace" font-style="normal" font-weight="normal" line-height="32.400000000000006px" dominant-baseline="mathematical" alignment-baseline="mathematical" stroke="none" stroke-width="2px" class="depgraph-fill">
+        <tspan alignment-baseline="mathematical" x="0px" y="12px">A2</tspan>
+      </text>
+    </g>
+  </g>
+  <g transform="matrix(1, 0, 0, 1, 158.04, 579.96)" opacity="1">
+    <g>
+      <text font-size="24px" font-family="ui-monospace, monospace" font-style="normal" font-weight="normal" line-height="32.400000000000006px" dominant-baseline="mathematical" alignment-baseline="mathematical"  stroke-width="2px" class="depgraph-fill">
+        <tspan alignment-baseline="mathematical" x="0px" y="12px">A3</tspan>
+      </text>
+      <text font-size="24px" font-family="ui-monospace, monospace" font-style="normal" font-weight="normal" line-height="32.400000000000006px" dominant-baseline="mathematical" alignment-baseline="mathematical" stroke="none" stroke-width="2px" class="depgraph-fill">
+        <tspan alignment-baseline="mathematical" x="0px" y="12px">A3</tspan>
+      </text>
+    </g>
+  </g>
+  <g transform="matrix(1, 0, 0, 1, 602.94, 300.34)" opacity="1">
+    <g>
+      <text font-size="24px" font-family="ui-monospace, monospace" font-style="normal" font-weight="normal" line-height="32.400000000000006px" dominant-baseline="mathematical" alignment-baseline="mathematical"  stroke-width="2px" class="depgraph-fill">
+        <tspan alignment-baseline="mathematical" x="0px" y="12px">C3</tspan>
+      </text>
+      <text font-size="24px" font-family="ui-monospace, monospace" font-style="normal" font-weight="normal" line-height="32.400000000000006px" dominant-baseline="mathematical" alignment-baseline="mathematical" stroke="none" stroke-width="2px" class="depgraph-fill">
+        <tspan alignment-baseline="mathematical" x="0px" y="12px">C3</tspan>
+      </text>
+    </g>
+  </g>
+  <g transform="matrix(1, 0, 0, 1, 737.76, 526.18)" opacity="1">
+    <g>
+      <text font-size="24px" font-family="ui-monospace, monospace" font-style="normal" font-weight="normal" line-height="32.400000000000006px" dominant-baseline="mathematical" alignment-baseline="mathematical"  stroke-width="2px" class="depgraph-fill">
+        <tspan alignment-baseline="mathematical" x="0px" y="12px">C4</tspan>
+      </text>
+      <text font-size="24px" font-family="ui-monospace, monospace" font-style="normal" font-weight="normal" line-height="32.400000000000006px" dominant-baseline="mathematical" alignment-baseline="mathematical" stroke="none" stroke-width="2px" class="depgraph-fill">
+        <tspan alignment-baseline="mathematical" x="0px" y="12px">C4</tspan>
+      </text>
+    </g>
+  </g>
+  <g transform="matrix(1, 0, 0, 1, 732.76, 642.69)" opacity="1">
+    <g>
+      <text font-size="24px" font-family="ui-monospace, monospace" font-style="normal" font-weight="normal" line-height="32.400000000000006px" dominant-baseline="mathematical" alignment-baseline="mathematical"  stroke-width="2px" class="depgraph-fill">
+        <tspan alignment-baseline="mathematical" x="0px" y="12px">C5</tspan>
+      </text>
+      <text font-size="24px" font-family="ui-monospace, monospace" font-style="normal" font-weight="normal" line-height="32.400000000000006px" dominant-baseline="mathematical" alignment-baseline="mathematical" stroke="none" stroke-width="2px" class="depgraph-fill">
+        <tspan alignment-baseline="mathematical" x="0px" y="12px">C5</tspan>
+      </text>
+    </g>
+  </g>
+  <g transform="matrix(1, 0, 0, 1, 1016.34, 329.02)" opacity="1">
+    <g>
+      <text font-size="24px" font-family="ui-monospace, monospace" font-style="normal" font-weight="normal" line-height="32.400000000000006px" dominant-baseline="mathematical" alignment-baseline="mathematical"  stroke-width="2px" class="depgraph-fill">
+        <tspan alignment-baseline="mathematical" x="0px" y="12px">C6</tspan>
+      </text>
+      <text font-size="24px" font-family="ui-monospace, monospace" font-style="normal" font-weight="normal" line-height="32.400000000000006px" dominant-baseline="mathematical" alignment-baseline="mathematical" stroke="none" stroke-width="2px" class="depgraph-fill">
+        <tspan alignment-baseline="mathematical" x="0px" y="12px">C6</tspan>
+      </text>
+    </g>
+  </g>
+  <g transform="matrix(1, 0, 0, 1, 1022.10, 477.79)" opacity="1">
+    <g>
+      <text font-size="24px" font-family="ui-monospace, monospace" font-style="normal" font-weight="normal" line-height="32.400000000000006px" dominant-baseline="mathematical" alignment-baseline="mathematical"  stroke-width="2px" class="depgraph-fill">
+        <tspan alignment-baseline="mathematical" x="0px" y="12px">C7</tspan>
+      </text>
+      <text font-size="24px" font-family="ui-monospace, monospace" font-style="normal" font-weight="normal" line-height="32.400000000000006px" dominant-baseline="mathematical" alignment-baseline="mathematical" stroke="none" stroke-width="2px" class="depgraph-fill">
+        <tspan alignment-baseline="mathematical" x="0px" y="12px">C7</tspan>
+      </text>
+    </g>
+  </g>
+  <g transform="matrix(1, 0, 0, 1, 1020.68, 615.81)" opacity="1">
+    <g>
+      <text font-size="24px" font-family="ui-monospace, monospace" font-style="normal" font-weight="normal" line-height="32.400000000000006px" dominant-baseline="mathematical" alignment-baseline="mathematical"  stroke-width="2px" class="depgraph-fill">
+        <tspan alignment-baseline="mathematical" x="0px" y="12px">C8</tspan>
+      </text>
+      <text font-size="24px" font-family="ui-monospace, monospace" font-style="normal" font-weight="normal" line-height="32.400000000000006px" dominant-baseline="mathematical" alignment-baseline="mathematical" stroke="none" stroke-width="2px" class="depgraph-fill">
+        <tspan alignment-baseline="mathematical" x="0px" y="12px">C8</tspan>
+      </text>
+    </g>
+  </g>
+  <g transform="matrix(1, 0, 0, 1, 481.44, 436.56)" opacity="1">
+    <g>
+      <text font-size="24px" font-family="ui-monospace, monospace" font-style="normal" font-weight="normal" line-height="32.400000000000006px" dominant-baseline="mathematical" alignment-baseline="mathematical"  stroke-width="2px" class="depgraph-fill">
+        <tspan alignment-baseline="mathematical" x="0px" y="12px">C1</tspan>
+      </text>
+      <text font-size="24px" font-family="ui-monospace, monospace" font-style="normal" font-weight="normal" line-height="32.400000000000006px" dominant-baseline="mathematical" alignment-baseline="mathematical" stroke="none" stroke-width="2px" class="depgraph-fill">
+        <tspan alignment-baseline="mathematical" x="0px" y="12px">C1</tspan>
+      </text>
+    </g>
+  </g>
+  <g transform="matrix(1, 0, 0, 1, 471.06, 588.92)" opacity="1">
+    <g>
+      <text font-size="24px" font-family="ui-monospace, monospace" font-style="normal" font-weight="normal" line-height="32.400000000000006px" dominant-baseline="mathematical" alignment-baseline="mathematical"  stroke-width="2px" class="depgraph-fill">
+        <tspan alignment-baseline="mathematical" x="0px" y="12px">C2</tspan>
+      </text>
+      <text font-size="24px" font-family="ui-monospace, monospace" font-style="normal" font-weight="normal" line-height="32.400000000000006px" dominant-baseline="mathematical" alignment-baseline="mathematical" stroke="none" stroke-width="2px" class="depgraph-fill">
+        <tspan alignment-baseline="mathematical" x="0px" y="12px">C2</tspan>
+      </text>
+    </g>
+  </g>
+</svg>
+
+</div>
+<blockquote>
+<p>At this point, <code>C1</code> can recalculate, because all of its dependencies
+(just <code>A1</code>) are fresh. However, <code>C3</code> cannot recalculate yet because
+one of its dependencies (<code>C1</code>) is still stale.</p>
+</blockquote>
+<ol start="3">
+<li>Once a <code>Calc</code> recalculates, it is now fresh, and it notifies its
+dependents.</li>
+</ol>
+<div class="frame75 pin-to-above">
+<?xml version="1.0"?>
+<svg xmlns="http://www.w3.org/2000/svg" direction="ltr" viewBox="100 252.93 1000.95 469.53" stroke-linecap="round" stroke-linejoin="round" style="background-color: transparent;">
+  <g transform="matrix(1, 0, 0, 1, 139, 390)" opacity="1">
+    <path d="M9.9967,-0.2567 L51.3355,-1.3183 Q61.3322,-1.575 60.87,8.4146 L59.0559,48.3899 Q58.6008,58.3795 48.60,58.4725 L11.3257,58.8192 Q1.3261,58.9122 1.34,48.9122 L1.4035,8.9598 Q1.419,-1.0401 11.41,-0.8063 L50.2158,0.1012 Q60.2131,0.335 59.98,10.3325 L59.101,49.8786 Q58.8766,59.8761 48.87,59.7611 L10.1047,59.3154 Q0.1053,59.2004 -0.1135,49.2028 L-0.9929,9.0194 Q-1.2117,-0.9782 9.99,-0.2567 " fill="none" stroke="#099268" stroke-width="5"/>
+  </g>
+  <g transform="matrix(1, 0, 0, 1, 132, 478)" opacity="1">
+    <path d="M9.9986,-0.1697 L51.0858,-0.867 Q61.0844,-1.0366 61.10,8.9633 L61.1806,50.7522 Q61.1992,60.7522 51.20,60.5965 L11.0935,59.972 Q1.0947,59.8164 1.12,49.8164 L1.2335,11.5732 Q1.2622,1.5733 11.26,1.5248 L49.0709,1.3413 Q59.0708,1.2928 58.95,11.2921 L58.4866,51.1749 Q58.3695,61.1742 48.37,60.8899 L9.985,59.7981 Q-0.0109,59.5138 0.21,49.5164 L1.0929,11.0878 Q1.3208,1.0904 9.99,-0.1697 " fill="none" class="depgraph-stroke" stroke-width="5"/>
+  </g>
+  <g transform="matrix(1, 0, 0, 1, 141, 565)" opacity="1">
+    <path d="M10,-0.0282 L51.6537,-0.1459 Q61.6536,-0.1742 61.50,9.8248 L60.9405,49.1038 Q60.7959,59.1028 50.79,59.3734 L10.7559,60.4573 Q0.7596,60.7279 0.61,50.729 L-0.0191,8.4804 Q-0.1681,-1.5185 9.82,-1.2201 L50.3738,-0.0098 Q60.3693,0.2886 60.51,10.2875 L61.0778,49.4966 Q61.2217,59.4955 51.22,59.825 L10.5247,61.1668 Q0.5302,61.4963 0.19,51.5018 L-1.1501,10.925 Q-1.4822,0.9305 10,-0.0282 " fill="none" class="depgraph-stroke" stroke-width="5"/>
+  </g>
+  <g transform="matrix(1, 0, 0, 1, 464.37, 420.60)" opacity="1">
+    <path d="M5.3509,52.0277 Q-0.128,47.2626 -1.7,39.6955 T-1.552,24.6014 4.94,10.9895 16.57,1.4023 31.13,-2.3906 45.96,0.3023 58.26,9.0084 65.69,22.0464 66.94,36.9854 61.84,51.088 51.27,61.71 37.24,66.9437 22.31,65.7888 9.24,58.4166 0.48,46.1928 -2.2907,31.4215 1.43,16.8924 10.85,5.2157 24.64,0.1946 32.43,0.0004 32.44,0.0102 26.52,2.8293 15.52,9.4401 7.38,18.7766 3.89,30.6028 5.78,42.835 12.61,53.1846 23.14,59.674 35.44,61.1063 47.22,57.2143 56.25,48.7249 60.81,37.1948 60.13,24.852 54.34,13.98 44.48,6.5663 32.41,3.9565 20.43,6.6358 10.66,14.1274 4.95,25.0312 4.39,37.3519 8.14,50.1788 10.83,56.787 5.35,52.0277 Z" fill="#099268"/>
+  </g>
+  <g transform="matrix(1, 0, 0, 1, 328, 416)" opacity="1">
+    <g>
+      <defs>
+        <mask id="shape_S-Uus0NFmYGYezjroerrN_clip">
+          <rect x="-221.00947280945599" y="-53.586667418074285" width="458.79" height="240.79" fill="white"/>
+          <path d="M -107.67132256333163 94.06 L -121.00947280945597 87.20 L -108.39730833750632 79.08" fill="none" stroke="none"/>
+        </mask>
+      </defs>
+      <g mask="url(#shape_S-Uus0NFmYGYezjroerrN_clip)">
+        <rect x="-100" y="-100" width="458.79" height="240.79" fill="transparent" stroke="none"/>
+        <path d="M137.78735921321334,46.41333258192577 A1146.9865798805959 1146.98 0 0 1 -121.00947280945597,87.20590878763483" fill="none" class="depgraph-stroke" stroke-width="5" stroke-dasharray="none" stroke-dashoffset="none"/>
+      </g>
+      <path d="M -107.67132256333163 94.06 L -121.00947280945597 87.20 L -108.39730833750632 79.08" fill="none" class="depgraph-stroke" stroke-width="5"/>
+    </g>
+  </g>
+  <g transform="matrix(1, 0, 0, 1, 333, 422)" opacity="1">
+    <g>
+      <defs>
+        <mask id="shape_MuWr9XOb2cbTfhnwf_mlb_clip">
+          <rect x="-219.0022369565704" y="-98.712730774781" width="451.69" height="223.13" fill="white"/>
+          <path d="M -105.97606087952738 8.78 L -119.00223695657043 1.34 L -106.04794929318058 -6.216779852340175" fill="none" stroke="none"/>
+        </mask>
+      </defs>
+      <g mask="url(#shape_MuWr9XOb2cbTfhnwf_mlb_clip)">
+        <rect x="-100" y="-100" width="451.69" height="223.13" fill="transparent" stroke="none"/>
+        <path d="M132.6899829470144,24.42296476960871 A1237.6474787048699 1237.64 0 0 0 -119.00223695657043,1.3453912072263847" fill="none" stroke="#099268" stroke-width="5" stroke-dasharray="10.12 10.96" stroke-dashoffset="5"/>
+      </g>
+      <path d="M -105.97606087952738 8.78 L -119.00223695657043 1.34 L -106.04794929318058 -6.216779852340175" fill="none" stroke="#099268" stroke-width="5"/>
+    </g>
+  </g>
+  <g transform="matrix(1, 0, 0, 1, 452.74, 572.60)" opacity="1">
+    <path d="M65.5588,27.6212 Q68.2476,34.3734 66.20,41.814 T59.1942,55.1351 47.20,64.2391 32.47,67.4478 17.79,64.2083 5.82,55.0737 -1.156,41.7445 -1.8371,26.7711 3.80,12.8802 14.75,2.6285 28.99,-2.0635 43.85,-0.3472 56.63,7.454 64.93,19.9229 67.24,34.7299 63.14,49.1313 53.31,60.4278 39.64,66.5847 25.09,64.8856 18.02,61.5655 18.02,61.5558 24.60,61.7074 37.38,60.748 48.78,56.0522 57.17,47.0514 60.99,35.3393 59.57,23.0675 53.11,12.5411 42.79,5.6886 30.57,3.8102 18.68,7.2999 9.41,15.4857 4.47,26.7881 4.69,39.0591 10.05,50.1267 19.55,57.9436 31.44,61.0334 43.56,58.8511 53.60,51.7769 59.71,41.1169 62.22,27.9865 62.86,20.8705 65.55,27.6212 Z" class="depgraph-fill"/>
+  </g>
+  <g transform="matrix(1, 0, 0, 1, 328, 618)" opacity="1">
+    <g>
+      <defs>
+        <mask id="shape_HTmN5rub6AqIs0e4ND-yl_clip">
+          <rect x="-212.40539315801647" y="-111.19381198382791" width="438.46" height="214.54" fill="white"/>
+          <path d="M -101.24339284486402 -1.1733454772632292 L -112.40539315801647 -11.193811983827914 L -98.14641444898412 -15.850154558785448" fill="none" stroke="none"/>
+        </mask>
+      </defs>
+      <g mask="url(#shape_HTmN5rub6AqIs0e4ND-yl_clip)">
+        <rect x="-100" y="-100" width="438.46" height="214.54" fill="transparent" stroke="none"/>
+        <path d="M126.0570262319568,-6.2419040541955155 A601.250492342686 601.25 0 0 1 -112.40539315801647,-11.193811983827914" fill="none" class="depgraph-stroke" stroke-width="5" stroke-dasharray="none" stroke-dashoffset="none"/>
+      </g>
+      <path d="M -101.24339284486402 -1.1733454772632292 L -112.40539315801647 -11.193811983827914 L -98.14641444898412 -15.850154558785448" fill="none" class="depgraph-stroke" stroke-width="5"/>
+    </g>
+  </g>
+  <g transform="matrix(1, 0, 0, 1, 715.83, 625.80)" opacity="1">
+    <path d="M59.5203,52.2089 Q56.8167,58.7785 50.34,62.6092 T36.4118,67.2944 21.78,65.8327 9.04,58.4642 0.45,46.5226 -2.4709,32.124 0.79,17.7672 9.67,6.0216 22.56,-1.0006 37.17,-2.0624 50.96,2.9298 61.50,13.0982 66.87,26.7417 66.17,41.398 59.60,54.4706 48.20,63.6223 34.00,67.2924 19.56,64.851 8.60,55.6157 4.61,49.1579 4.62,49.1511 9.94,52.728 20.91,58.8221 32.74,61.2247 44.51,58.5381 54.12,51.3269 59.92,40.7706 60.93,28.728 56.91,17.3738 48.52,8.7006 37.33,4.2077 25.36,4.7711 14.63,10.209 7.03,19.5401 3.92,31.1727 5.91,42.9918 12.61,52.9743 22.78,59.3636 34.65,60.9849 46.15,57.5768 56.87,50.1383 62.21,45.6334 59.52,52.2089 Z" class="depgraph-fill"/>
+  </g>
+  <g transform="matrix(1, 0, 0, 1, 729.41, 681.47)" opacity="1">
+    <g>
+      <defs>
+        <mask id="shape_X8HvbM0krabnp7OGqGHY6_clip">
+          <rect x="-300.73259218453165" y="-160.6716260639862" width="388.46" height="237.69" fill="white"/>
+          <path d="M -191.1996896308442 -49.090444392761974 L -200.73259218453163 -60.671626063986196 L -185.93654337456502 -63.13677101166893" fill="none" stroke="none"/>
+        </mask>
+      </defs>
+      <g mask="url(#shape_X8HvbM0krabnp7OGqGHY6_clip)">
+        <rect x="-100" y="-100" width="388.46" height="237.69" fill="transparent" stroke="none"/>
+        <path d="M-12.26591343011512,-22.976430069392563 A553.0034356305026 553.00 0 0 1 -200.73259218453163,-60.671626063986196" fill="none" class="depgraph-stroke" stroke-width="5" stroke-dasharray="none" stroke-dashoffset="none"/>
+      </g>
+      <path d="M -191.1996896308442 -49.090444392761974 L -200.73259218453163 -60.671626063986196 L -185.93654337456502 -63.13677101166893" fill="none" class="depgraph-stroke" stroke-width="5"/>
+    </g>
+  </g>
+  <g transform="matrix(1, 0, 0, 1, 584.47, 284.60)" opacity="1">
+    <path d="M2.5,32.5a30,30,0,1,1,60,0a30,30,0,1,1,-60,0" stroke-width="5" width="65" height="65" fill="none" stroke="#099268" stroke-dasharray="11.78 11.78" stroke-dashoffset="5.89"/>
+  </g>
+  <g transform="matrix(1, 0, 0, 1, 632.37, 467.27)" opacity="1">
+    <g>
+      <defs>
+        <mask id="shape_nHJESl4NN_WuTTWJyqfHY_clip">
+          <rect x="-195.72394260943534" y="-221.43155925929767" width="268.18" height="282.03" fill="white"/>
+          <path d="M -80.9427299272046 -41.953510934189204 L -95.72394260943534 -39.40091389535576 L -90.54395014957467 -53.47811809632502" fill="none" stroke="none"/>
+        </mask>
+      </defs>
+      <g mask="url(#shape_nHJESl4NN_WuTTWJyqfHY_clip)">
+        <rect x="-100" y="-100" width="268.18" height="282.03" fill="transparent" stroke="none"/>
+        <path d="M-27.53816904171572,-121.43155925929773 A253.07224584079222 253.07 0 0 1 -95.72394260943534,-39.40091389535576" fill="none" stroke="#099268" stroke-width="5" stroke-dasharray="11.74 14.68" stroke-dashoffset="5"/>
+      </g>
+      <path d="M -80.9427299272046 -41.953510934189204 L -95.72394260943534 -39.40091389535576 L -90.54395014957467 -53.47811809632502" fill="none" stroke="#099268" stroke-width="5"/>
+    </g>
+  </g>
+  <g transform="matrix(1, 0, 0, 1, 634.37, 462.27)" opacity="1">
+    <g>
+      <defs>
+        <mask id="shape_yFE8tlO62zLgjcstlJGdC_clip">
+          <rect x="-521.5032660831482" y="-246.53192762439699" width="572.92" height="268.55" fill="white"/>
+          <path d="M -406.6691376076127 -75.74749533644881 L -421.5032660831482 -77.97204750965284 L -412.1596831513419 -89.70650352586668" fill="none" stroke="none"/>
+        </mask>
+      </defs>
+      <g mask="url(#shape_yFE8tlO62zLgjcstlJGdC_clip)">
+        <rect x="-100" y="-100" width="572.92" height="268.55" fill="transparent" stroke="none"/>
+        <path d="M-48.58239178764404,-146.34212183471578 A947.9469898655045 947.94 0 0 0 -421.5032660831482,-77.97204750965284" fill="none" stroke="#099268" stroke-width="5" stroke-dasharray="10.30 10.88" stroke-dashoffset="5"/>
+      </g>
+      <path d="M -406.6691376076127 -75.74749533644881 L -421.5032660831482 -77.97204750965284 L -412.1596831513419 -89.70650352586668" fill="none" stroke="#099268" stroke-width="5"/>
+    </g>
+  </g>
+  <g transform="matrix(1, 0, 0, 1, 1000.27, 314.49)" opacity="1">
+    <path d="M2.5,32.5a30,30,0,1,1,60,0a30,30,0,1,1,-60,0" stroke-width="5" width="65" height="65" fill="none" stroke="#099268" stroke-dasharray="11.78 11.78" stroke-dashoffset="5.89"/>
+  </g>
+  <g transform="matrix(1, 0, 0, 1, 864.41, 355.47)" opacity="1">
+    <g>
+      <defs>
+        <mask id="shape_TsRedPUR0PDHnqUJLAypL_clip">
+          <rect x="-420.20684107956305" y="-98.20502879503601" width="658.09" height="294.13" fill="white"/>
+          <path d="M -306.54664670263526 102.12 L -320.20684107956305 95.93 L -308.0102443626903 87.20" fill="none" stroke="none"/>
+        </mask>
+      </defs>
+      <g mask="url(#shape_TsRedPUR0PDHnqUJLAypL_clip)">
+        <rect x="-100" y="-100" width="658.09" height="294.13" fill="transparent" stroke="none"/>
+        <path d="M137.8847061320364,1.7949712049640425 A2160.9353149781186 2160.93 0 0 1 -320.20684107956305,95.9330740147011" fill="none" stroke="#099268" stroke-width="5" stroke-dasharray="10.40 10.87" stroke-dashoffset="5"/>
+      </g>
+      <path d="M -306.54664670263526 102.12 L -320.20684107956305 95.93 L -308.0102443626903 87.20" fill="none" stroke="#099268" stroke-width="5"/>
+    </g>
+  </g>
+  <g transform="matrix(1, 0, 0, 1, 1003.95, 459.49)" opacity="1">
+    <path d="M2.5,32.5a30,30,0,1,1,60,0a30,30,0,1,1,-60,0" stroke-width="5" width="65" height="65" fill="none" class="depgraph-stroke" stroke-dasharray="0.05 11.72" stroke-dashoffset="0.02"/>
+  </g>
+  <g transform="matrix(1, 0, 0, 1, 1003.63, 601.49)" opacity="1">
+    <path d="M28.0372,65.5952 Q20.6474,66.3012 13.97,62.0741 T3.0549,51.214 -2.1314,36.7362 -0.5828,21.4317 7.35,8.2982 20.21,-0.1248 35.46,-2.1966 50.04,2.491 61.22,12.9727 66.84,27.1969 65.77,42.48 58.26,55.8226 45.74,64.6384 30.66,67.2433 15.90,63.0755 4.36,52.9984 -1.6652,38.9226 -1.1223,23.5634 7.08,11.0978 13.32,6.2273 13.33,6.2339 10.16,12.1048 5.10,24.1594 4.21,36.7705 8.77,48.5279 17.95,57.1393 29.95,60.9837 42.42,59.2934 53.00,52.4261 59.62,41.6814 60.94,29.1458 56.71,17.2526 47.82,8.3064 35.97,4.1167 23.44,5.4461 12.70,11.9781 5.81,22.4626 4.08,34.9037 7.91,46.866 16.50,56.0599 28.62,62.2925 35.42,64.8793 28.03,65.5952 Z" class="depgraph-fill"/>
+  </g>
+  <g transform="matrix(1, 0, 0, 1, 882.41, 636.47)" opacity="1">
+    <g>
+      <defs>
+        <mask id="shape_P2YkL8fQuzD6-zEjB6MQj_clip">
+          <rect x="-187.4060785800255" y="-99.78544777762056" width="409.94" height="217.72" fill="white"/>
+          <path d="M -73.83063559233113 24.32 L -87.4060785800255 17.94 L -75.09291495310923 9.37" fill="none" stroke="none"/>
+        </mask>
+      </defs>
+      <g mask="url(#shape_P2YkL8fQuzD6-zEjB6MQj_clip)">
+        <rect x="-100" y="-100" width="409.94" height="217.72" fill="transparent" stroke="none"/>
+        <path d="M122.53634194940537,0.21455222237943872L-87.4060785800255,17.94450718285517" fill="none" class="depgraph-stroke" stroke-width="5" stroke-dasharray="none" stroke-dashoffset="none"/>
+      </g>
+      <path d="M -73.83063559233113 24.32 L -87.4060785800255 17.94 L -75.09291495310923 9.37" fill="none" class="depgraph-stroke" stroke-width="5"/>
+    </g>
+  </g>
+  <g transform="matrix(1, 0, 0, 1, 719.52, 511.80)" opacity="1">
+    <path d="M2.5,32.5a30,30,0,1,1,60,0a30,30,0,1,1,-60,0" stroke-width="5" width="65" height="65" fill="none" stroke="#099268" stroke-dasharray="11.78 11.78" stroke-dashoffset="5.89"/>
+  </g>
+  <g transform="matrix(1, 0, 0, 1, 874.41, 499.47)" opacity="1">
+    <g>
+      <defs>
+        <mask id="shape_k4splTVG2geIjq4HtRLIZ_clip">
+          <rect x="-181.05200135704428" y="-113.35661894464982" width="411.90" height="235.58" fill="white"/>
+          <path d="M -66.18589226619696 24.23 L -81.05200135704426 22.23 L -71.8871557231026 10.35" fill="none" stroke="none"/>
+        </mask>
+      </defs>
+      <g mask="url(#shape_k4splTVG2geIjq4HtRLIZ_clip)">
+        <rect x="-100" y="-100" width="411.90" height="235.58" fill="transparent" stroke="none"/>
+        <path d="M130.85282030693406,-11.562404332465746 A435.43967645474123 435.43 0 0 0 -81.05200135704426,22.232672416289176" fill="none" class="depgraph-stroke" stroke-width="5" stroke-dasharray="0.05 10.78" stroke-dashoffset="0.02"/>
+      </g>
+      <path d="M -66.18589226619696 24.23 L -81.05200135704426 22.23 L -71.8871557231026 10.35" fill="none" class="depgraph-stroke" stroke-width="5"/>
+    </g>
+  </g>
+  <g transform="matrix(1, 0, 0, 1, 736.41, 560.47)" opacity="1">
+    <g>
+      <defs>
+        <mask id="shape_KtvuH4OpWM5Lw9lw_RZEH_clip">
+          <rect x="-293.9105421586628" y="-199.03338266976482" width="382.47" height="267.25" fill="white"/>
+          <path d="M -182.9319704023163 -88.81227890398932 L -193.91054215866282 -99.03338266976482 L -179.56952076461118 -103.43055282514351" fill="none" stroke="none"/>
+        </mask>
+      </defs>
+      <g mask="url(#shape_KtvuH4OpWM5Lw9lw_RZEH_clip)">
+        <rect x="-100" y="-100" width="382.47" height="267.25" fill="transparent" stroke="none"/>
+        <path d="M-11.436232625878006,-31.77705454537511 A708.7585526134293 708.75 0 0 0 -193.91054215866282,-99.03338266976482" fill="none" stroke="#099268" stroke-width="5" stroke-dasharray="10.25 11.39" stroke-dashoffset="5"/>
+      </g>
+      <path d="M -182.9319704023163 -88.81227890398932 L -193.91054215866282 -99.03338266976482 L -179.56952076461118 -103.43055282514351" fill="none" stroke="#099268" stroke-width="5"/>
+    </g>
+  </g>
+  <g transform="matrix(1, 0, 0, 1, 731.41, 557.47)" opacity="1">
+    <g>
+      <defs>
+        <mask id="shape_x8qwKV53Nq7KFYiDWZQd5_clip">
+          <rect x="-300.3559904798832" y="-99.83607108036148" width="392.45" height="241.57" fill="white"/>
+          <path d="M -187.07055735483164 48.69 L -200.35599047988316 41.73 L -187.6822748284968 33.71" fill="none" stroke="none"/>
+        </mask>
+      </defs>
+      <g mask="url(#shape_x8qwKV53Nq7KFYiDWZQd5_clip)">
+        <rect x="-100" y="-100" width="392.45" height="241.57" fill="transparent" stroke="none"/>
+        <path d="M-7.8981140537617875,0.16392891963846523 A532.2605680375101 532.26 0 0 1 -200.35599047988316,41.73545178341624" fill="none" class="depgraph-stroke" stroke-width="5" stroke-dasharray="none" stroke-dashoffset="none"/>
+      </g>
+      <path d="M -187.07055735483164 48.69 L -200.35599047988316 41.73 L -187.6822748284968 33.71" fill="none" class="depgraph-stroke" stroke-width="5"/>
+    </g>
+  </g>
+  <g transform="matrix(1, 0, 0, 1, 153.70, 402.51)" opacity="1">
+    <g>
+      <text font-size="24px" font-family="ui-monospace, monospace" font-style="normal" font-weight="normal" line-height="32.400000000000006px" dominant-baseline="mathematical" alignment-baseline="mathematical"  stroke-width="2px" class="depgraph-fill">
+        <tspan alignment-baseline="mathematical" x="0px" y="12px">A1</tspan>
+      </text>
+      <text font-size="24px" font-family="ui-monospace, monospace" font-style="normal" font-weight="normal" line-height="32.400000000000006px" dominant-baseline="mathematical" alignment-baseline="mathematical" stroke="none" stroke-width="2px" class="depgraph-fill">
+        <tspan alignment-baseline="mathematical" x="0px" y="12px">A1</tspan>
+      </text>
+    </g>
+  </g>
+  <g transform="matrix(1, 0, 0, 1, 148.70, 493.92)" opacity="1">
+    <g>
+      <text font-size="24px" font-family="ui-monospace, monospace" font-style="normal" font-weight="normal" line-height="32.400000000000006px" dominant-baseline="mathematical" alignment-baseline="mathematical"  stroke-width="2px" class="depgraph-fill">
+        <tspan alignment-baseline="mathematical" x="0px" y="12px">A2</tspan>
+      </text>
+      <text font-size="24px" font-family="ui-monospace, monospace" font-style="normal" font-weight="normal" line-height="32.400000000000006px" dominant-baseline="mathematical" alignment-baseline="mathematical" stroke="none" stroke-width="2px" class="depgraph-fill">
+        <tspan alignment-baseline="mathematical" x="0px" y="12px">A2</tspan>
+      </text>
+    </g>
+  </g>
+  <g transform="matrix(1, 0, 0, 1, 158.04, 579.96)" opacity="1">
+    <g>
+      <text font-size="24px" font-family="ui-monospace, monospace" font-style="normal" font-weight="normal" line-height="32.400000000000006px" dominant-baseline="mathematical" alignment-baseline="mathematical"  stroke-width="2px" class="depgraph-fill">
+        <tspan alignment-baseline="mathematical" x="0px" y="12px">A3</tspan>
+      </text>
+      <text font-size="24px" font-family="ui-monospace, monospace" font-style="normal" font-weight="normal" line-height="32.400000000000006px" dominant-baseline="mathematical" alignment-baseline="mathematical" stroke="none" stroke-width="2px" class="depgraph-fill">
+        <tspan alignment-baseline="mathematical" x="0px" y="12px">A3</tspan>
+      </text>
+    </g>
+  </g>
+  <g transform="matrix(1, 0, 0, 1, 602.94, 300.34)" opacity="1">
+    <g>
+      <text font-size="24px" font-family="ui-monospace, monospace" font-style="normal" font-weight="normal" line-height="32.400000000000006px" dominant-baseline="mathematical" alignment-baseline="mathematical"  stroke-width="2px" class="depgraph-fill">
+        <tspan alignment-baseline="mathematical" x="0px" y="12px">C3</tspan>
+      </text>
+      <text font-size="24px" font-family="ui-monospace, monospace" font-style="normal" font-weight="normal" line-height="32.400000000000006px" dominant-baseline="mathematical" alignment-baseline="mathematical" stroke="none" stroke-width="2px" class="depgraph-fill">
+        <tspan alignment-baseline="mathematical" x="0px" y="12px">C3</tspan>
+      </text>
+    </g>
+  </g>
+  <g transform="matrix(1, 0, 0, 1, 737.76, 526.18)" opacity="1">
+    <g>
+      <text font-size="24px" font-family="ui-monospace, monospace" font-style="normal" font-weight="normal" line-height="32.400000000000006px" dominant-baseline="mathematical" alignment-baseline="mathematical"  stroke-width="2px" class="depgraph-fill">
+        <tspan alignment-baseline="mathematical" x="0px" y="12px">C4</tspan>
+      </text>
+      <text font-size="24px" font-family="ui-monospace, monospace" font-style="normal" font-weight="normal" line-height="32.400000000000006px" dominant-baseline="mathematical" alignment-baseline="mathematical" stroke="none" stroke-width="2px" class="depgraph-fill">
+        <tspan alignment-baseline="mathematical" x="0px" y="12px">C4</tspan>
+      </text>
+    </g>
+  </g>
+  <g transform="matrix(1, 0, 0, 1, 732.76, 642.69)" opacity="1">
+    <g>
+      <text font-size="24px" font-family="ui-monospace, monospace" font-style="normal" font-weight="normal" line-height="32.400000000000006px" dominant-baseline="mathematical" alignment-baseline="mathematical"  stroke-width="2px" class="depgraph-fill">
+        <tspan alignment-baseline="mathematical" x="0px" y="12px">C5</tspan>
+      </text>
+      <text font-size="24px" font-family="ui-monospace, monospace" font-style="normal" font-weight="normal" line-height="32.400000000000006px" dominant-baseline="mathematical" alignment-baseline="mathematical" stroke="none" stroke-width="2px" class="depgraph-fill">
+        <tspan alignment-baseline="mathematical" x="0px" y="12px">C5</tspan>
+      </text>
+    </g>
+  </g>
+  <g transform="matrix(1, 0, 0, 1, 1016.34, 329.02)" opacity="1">
+    <g>
+      <text font-size="24px" font-family="ui-monospace, monospace" font-style="normal" font-weight="normal" line-height="32.400000000000006px" dominant-baseline="mathematical" alignment-baseline="mathematical"  stroke-width="2px" class="depgraph-fill">
+        <tspan alignment-baseline="mathematical" x="0px" y="12px">C6</tspan>
+      </text>
+      <text font-size="24px" font-family="ui-monospace, monospace" font-style="normal" font-weight="normal" line-height="32.400000000000006px" dominant-baseline="mathematical" alignment-baseline="mathematical" stroke="none" stroke-width="2px" class="depgraph-fill">
+        <tspan alignment-baseline="mathematical" x="0px" y="12px">C6</tspan>
+      </text>
+    </g>
+  </g>
+  <g transform="matrix(1, 0, 0, 1, 1022.10, 477.79)" opacity="1">
+    <g>
+      <text font-size="24px" font-family="ui-monospace, monospace" font-style="normal" font-weight="normal" line-height="32.400000000000006px" dominant-baseline="mathematical" alignment-baseline="mathematical"  stroke-width="2px" class="depgraph-fill">
+        <tspan alignment-baseline="mathematical" x="0px" y="12px">C7</tspan>
+      </text>
+      <text font-size="24px" font-family="ui-monospace, monospace" font-style="normal" font-weight="normal" line-height="32.400000000000006px" dominant-baseline="mathematical" alignment-baseline="mathematical" stroke="none" stroke-width="2px" class="depgraph-fill">
+        <tspan alignment-baseline="mathematical" x="0px" y="12px">C7</tspan>
+      </text>
+    </g>
+  </g>
+  <g transform="matrix(1, 0, 0, 1, 1020.68, 615.81)" opacity="1">
+    <g>
+      <text font-size="24px" font-family="ui-monospace, monospace" font-style="normal" font-weight="normal" line-height="32.400000000000006px" dominant-baseline="mathematical" alignment-baseline="mathematical"  stroke-width="2px" class="depgraph-fill">
+        <tspan alignment-baseline="mathematical" x="0px" y="12px">C8</tspan>
+      </text>
+      <text font-size="24px" font-family="ui-monospace, monospace" font-style="normal" font-weight="normal" line-height="32.400000000000006px" dominant-baseline="mathematical" alignment-baseline="mathematical" stroke="none" stroke-width="2px" class="depgraph-fill">
+        <tspan alignment-baseline="mathematical" x="0px" y="12px">C8</tspan>
+      </text>
+    </g>
+  </g>
+  <g transform="matrix(1, 0, 0, 1, 481.44, 436.56)" opacity="1">
+    <g>
+      <text font-size="24px" font-family="ui-monospace, monospace" font-style="normal" font-weight="normal" line-height="32.400000000000006px" dominant-baseline="mathematical" alignment-baseline="mathematical"  stroke-width="2px" class="depgraph-fill">
+        <tspan alignment-baseline="mathematical" x="0px" y="12px">C1</tspan>
+      </text>
+      <text font-size="24px" font-family="ui-monospace, monospace" font-style="normal" font-weight="normal" line-height="32.400000000000006px" dominant-baseline="mathematical" alignment-baseline="mathematical" stroke="none" stroke-width="2px" class="depgraph-fill">
+        <tspan alignment-baseline="mathematical" x="0px" y="12px">C1</tspan>
+      </text>
+    </g>
+  </g>
+  <g transform="matrix(1, 0, 0, 1, 471.06, 588.92)" opacity="1">
+    <g>
+      <text font-size="24px" font-family="ui-monospace, monospace" font-style="normal" font-weight="normal" line-height="32.400000000000006px" dominant-baseline="mathematical" alignment-baseline="mathematical"  stroke-width="2px" class="depgraph-fill">
+        <tspan alignment-baseline="mathematical" x="0px" y="12px">C2</tspan>
+      </text>
+      <text font-size="24px" font-family="ui-monospace, monospace" font-style="normal" font-weight="normal" line-height="32.400000000000006px" dominant-baseline="mathematical" alignment-baseline="mathematical" stroke="none" stroke-width="2px" class="depgraph-fill">
+        <tspan alignment-baseline="mathematical" x="0px" y="12px">C2</tspan>
+      </text>
+    </g>
+  </g>
+</svg>
+
+</div>
+<blockquote>
+<p><code>C3</code> may now recalculate &#8211; as can <code>C4</code> and <code>C6</code> &#8211; because all of
+their dependencies are fresh.</p>
+</blockquote>
+<ol start="4">
+<li>This process continues until all facts are fresh.</li>
+</ol>
+<div class="frame75 pin-to-above">
+<?xml version="1.0"?>
+<svg xmlns="http://www.w3.org/2000/svg" direction="ltr" viewBox="100 252.93 1000.95 469.53" stroke-linecap="round" stroke-linejoin="round" style="background-color: transparent;">
+  <g transform="matrix(1, 0, 0, 1, 139, 390)" opacity="1">
+    <path d="M9.9967,-0.2567 L51.3355,-1.3183 Q61.3322,-1.575 60.87,8.4146 L59.0559,48.3899 Q58.6008,58.3795 48.60,58.4725 L11.3257,58.8192 Q1.3261,58.9122 1.34,48.9122 L1.4035,8.9598 Q1.419,-1.0401 11.41,-0.8063 L50.2158,0.1012 Q60.2131,0.335 59.98,10.3325 L59.101,49.8786 Q58.8766,59.8761 48.87,59.7611 L10.1047,59.3154 Q0.1053,59.2004 -0.1135,49.2028 L-0.9929,9.0194 Q-1.2117,-0.9782 9.99,-0.2567 " fill="none" stroke="#099268" stroke-width="5"/>
+  </g>
+  <g transform="matrix(1, 0, 0, 1, 132, 478)" opacity="1">
+    <path d="M9.9986,-0.1697 L51.0858,-0.867 Q61.0844,-1.0366 61.10,8.9633 L61.1806,50.7522 Q61.1992,60.7522 51.20,60.5965 L11.0935,59.972 Q1.0947,59.8164 1.12,49.8164 L1.2335,11.5732 Q1.2622,1.5733 11.26,1.5248 L49.0709,1.3413 Q59.0708,1.2928 58.95,11.2921 L58.4866,51.1749 Q58.3695,61.1742 48.37,60.8899 L9.985,59.7981 Q-0.0109,59.5138 0.21,49.5164 L1.0929,11.0878 Q1.3208,1.0904 9.99,-0.1697 " fill="none" class="depgraph-stroke" stroke-width="5"/>
+  </g>
+  <g transform="matrix(1, 0, 0, 1, 141, 565)" opacity="1">
+    <path d="M10,-0.0282 L51.6537,-0.1459 Q61.6536,-0.1742 61.50,9.8248 L60.9405,49.1038 Q60.7959,59.1028 50.79,59.3734 L10.7559,60.4573 Q0.7596,60.7279 0.61,50.729 L-0.0191,8.4804 Q-0.1681,-1.5185 9.82,-1.2201 L50.3738,-0.0098 Q60.3693,0.2886 60.51,10.2875 L61.0778,49.4966 Q61.2217,59.4955 51.22,59.825 L10.5247,61.1668 Q0.5302,61.4963 0.19,51.5018 L-1.1501,10.925 Q-1.4822,0.9305 10,-0.0282 " fill="none" class="depgraph-stroke" stroke-width="5"/>
+  </g>
+  <g transform="matrix(1, 0, 0, 1, 464.37, 420.60)" opacity="1">
+    <path d="M5.3509,52.0277 Q-0.128,47.2626 -1.7,39.6955 T-1.552,24.6014 4.94,10.9895 16.57,1.4023 31.13,-2.3906 45.96,0.3023 58.26,9.0084 65.69,22.0464 66.94,36.9854 61.84,51.088 51.27,61.71 37.24,66.9437 22.31,65.7888 9.24,58.4166 0.48,46.1928 -2.2907,31.4215 1.43,16.8924 10.85,5.2157 24.64,0.1946 32.43,0.0004 32.44,0.0102 26.52,2.8293 15.52,9.4401 7.38,18.7766 3.89,30.6028 5.78,42.835 12.61,53.1846 23.14,59.674 35.44,61.1063 47.22,57.2143 56.25,48.7249 60.81,37.1948 60.13,24.852 54.34,13.98 44.48,6.5663 32.41,3.9565 20.43,6.6358 10.66,14.1274 4.95,25.0312 4.39,37.3519 8.14,50.1788 10.83,56.787 5.35,52.0277 Z" fill="#099268"/>
+  </g>
+  <g transform="matrix(1, 0, 0, 1, 328, 416)" opacity="1">
+    <g>
+      <defs>
+        <mask id="shape_S-Uus0NFmYGYezjroerrN_clip">
+          <rect x="-221.00947280945599" y="-53.586667418074285" width="458.79" height="240.79" fill="white"/>
+          <path d="M -107.67132256333163 94.06 L -121.00947280945597 87.20 L -108.39730833750632 79.08" fill="none" stroke="none"/>
+        </mask>
+      </defs>
+      <g mask="url(#shape_S-Uus0NFmYGYezjroerrN_clip)">
+        <rect x="-100" y="-100" width="458.79" height="240.79" fill="transparent" stroke="none"/>
+        <path d="M137.78735921321334,46.41333258192577 A1146.9865798805959 1146.98 0 0 1 -121.00947280945597,87.20590878763483" fill="none" class="depgraph-stroke" stroke-width="5" stroke-dasharray="none" stroke-dashoffset="none"/>
+      </g>
+      <path d="M -107.67132256333163 94.06 L -121.00947280945597 87.20 L -108.39730833750632 79.08" fill="none" class="depgraph-stroke" stroke-width="5"/>
+    </g>
+  </g>
+  <g transform="matrix(1, 0, 0, 1, 333, 422)" opacity="1">
+    <g>
+      <defs>
+        <mask id="shape_MuWr9XOb2cbTfhnwf_mlb_clip">
+          <rect x="-219.0022369565704" y="-98.712730774781" width="451.69" height="223.13" fill="white"/>
+          <path d="M -105.97606087952738 8.78 L -119.00223695657043 1.34 L -106.04794929318058 -6.216779852340175" fill="none" stroke="none"/>
+        </mask>
+      </defs>
+      <g mask="url(#shape_MuWr9XOb2cbTfhnwf_mlb_clip)">
+        <rect x="-100" y="-100" width="451.69" height="223.13" fill="transparent" stroke="none"/>
+        <path d="M132.6899829470144,24.42296476960871 A1237.6474787048699 1237.64 0 0 0 -119.00223695657043,1.3453912072263847" fill="none" stroke="#099268" stroke-width="5" stroke-dasharray="10.12 10.96" stroke-dashoffset="5"/>
+      </g>
+      <path d="M -105.97606087952738 8.78 L -119.00223695657043 1.34 L -106.04794929318058 -6.216779852340175" fill="none" stroke="#099268" stroke-width="5"/>
+    </g>
+  </g>
+  <g transform="matrix(1, 0, 0, 1, 452.74, 572.60)" opacity="1">
+    <path d="M65.5588,27.6212 Q68.2476,34.3734 66.20,41.814 T59.1942,55.1351 47.20,64.2391 32.47,67.4478 17.79,64.2083 5.82,55.0737 -1.156,41.7445 -1.8371,26.7711 3.80,12.8802 14.75,2.6285 28.99,-2.0635 43.85,-0.3472 56.63,7.454 64.93,19.9229 67.24,34.7299 63.14,49.1313 53.31,60.4278 39.64,66.5847 25.09,64.8856 18.02,61.5655 18.02,61.5558 24.60,61.7074 37.38,60.748 48.78,56.0522 57.17,47.0514 60.99,35.3393 59.57,23.0675 53.11,12.5411 42.79,5.6886 30.57,3.8102 18.68,7.2999 9.41,15.4857 4.47,26.7881 4.69,39.0591 10.05,50.1267 19.55,57.9436 31.44,61.0334 43.56,58.8511 53.60,51.7769 59.71,41.1169 62.22,27.9865 62.86,20.8705 65.55,27.6212 Z" class="depgraph-fill"/>
+  </g>
+  <g transform="matrix(1, 0, 0, 1, 328, 618)" opacity="1">
+    <g>
+      <defs>
+        <mask id="shape_HTmN5rub6AqIs0e4ND-yl_clip">
+          <rect x="-212.40539315801647" y="-111.19381198382791" width="438.46" height="214.54" fill="white"/>
+          <path d="M -101.24339284486402 -1.1733454772632292 L -112.40539315801647 -11.193811983827914 L -98.14641444898412 -15.850154558785448" fill="none" stroke="none"/>
+        </mask>
+      </defs>
+      <g mask="url(#shape_HTmN5rub6AqIs0e4ND-yl_clip)">
+        <rect x="-100" y="-100" width="438.46" height="214.54" fill="transparent" stroke="none"/>
+        <path d="M126.0570262319568,-6.2419040541955155 A601.250492342686 601.25 0 0 1 -112.40539315801647,-11.193811983827914" fill="none" class="depgraph-stroke" stroke-width="5" stroke-dasharray="none" stroke-dashoffset="none"/>
+      </g>
+      <path d="M -101.24339284486402 -1.1733454772632292 L -112.40539315801647 -11.193811983827914 L -98.14641444898412 -15.850154558785448" fill="none" class="depgraph-stroke" stroke-width="5"/>
+    </g>
+  </g>
+  <g transform="matrix(1, 0, 0, 1, 715.83, 625.80)" opacity="1">
+    <path d="M59.5203,52.2089 Q56.8167,58.7785 50.34,62.6092 T36.4118,67.2944 21.78,65.8327 9.04,58.4642 0.45,46.5226 -2.4709,32.124 0.79,17.7672 9.67,6.0216 22.56,-1.0006 37.17,-2.0624 50.96,2.9298 61.50,13.0982 66.87,26.7417 66.17,41.398 59.60,54.4706 48.20,63.6223 34.00,67.2924 19.56,64.851 8.60,55.6157 4.61,49.1579 4.62,49.1511 9.94,52.728 20.91,58.8221 32.74,61.2247 44.51,58.5381 54.12,51.3269 59.92,40.7706 60.93,28.728 56.91,17.3738 48.52,8.7006 37.33,4.2077 25.36,4.7711 14.63,10.209 7.03,19.5401 3.92,31.1727 5.91,42.9918 12.61,52.9743 22.78,59.3636 34.65,60.9849 46.15,57.5768 56.87,50.1383 62.21,45.6334 59.52,52.2089 Z" class="depgraph-fill"/>
+  </g>
+  <g transform="matrix(1, 0, 0, 1, 729.41, 681.47)" opacity="1">
+    <g>
+      <defs>
+        <mask id="shape_X8HvbM0krabnp7OGqGHY6_clip">
+          <rect x="-300.73259218453165" y="-160.6716260639862" width="388.46" height="237.69" fill="white"/>
+          <path d="M -191.1996896308442 -49.090444392761974 L -200.73259218453163 -60.671626063986196 L -185.93654337456502 -63.13677101166893" fill="none" stroke="none"/>
+        </mask>
+      </defs>
+      <g mask="url(#shape_X8HvbM0krabnp7OGqGHY6_clip)">
+        <rect x="-100" y="-100" width="388.46" height="237.69" fill="transparent" stroke="none"/>
+        <path d="M-12.26591343011512,-22.976430069392563 A553.0034356305026 553.00 0 0 1 -200.73259218453163,-60.671626063986196" fill="none" class="depgraph-stroke" stroke-width="5" stroke-dasharray="none" stroke-dashoffset="none"/>
+      </g>
+      <path d="M -191.1996896308442 -49.090444392761974 L -200.73259218453163 -60.671626063986196 L -185.93654337456502 -63.13677101166893" fill="none" class="depgraph-stroke" stroke-width="5"/>
+    </g>
+  </g>
+  <g transform="matrix(1, 0, 0, 1, 584.47, 284.60)" opacity="1">
+    <path d="M7.6692,10.1256 Q11.0072,3.8829 17.87,0.7386 T32.2456,-2.4495 46.64,0.5092 58.57,9.1662 65.82,22.0194 67.13,36.6408 62.36,50.4986 52.32,61.1729 38.78,66.7707 24.09,66.3197 10.89,59.8875 1.55,48.5781 -2.2986,34.4103 -0.007,19.946 7.99,7.6679 20.40,-0.2303 34.96,-2.2752 49.05,1.8517 58.91,12.2817 62.15,19.1465 62.14,19.1525 57.24,15.0021 47.00,7.6969 35.52,3.9034 23.52,5.2422 13.12,11.4116 6.17,21.2598 3.87,33.0757 6.62,44.8345 13.93,54.4256 24.60,60.0646 36.68,60.8434 47.93,56.6204 56.47,48.117 60.77,36.8965 60.06,24.8916 54.49,14.2144 44.99,6.8203 33.32,3.9883 21.51,6.1659 10.08,12.4521 4.33,16.375 7.66,10.1256 Z" fill="#099268"/>
+  </g>
+  <g transform="matrix(1, 0, 0, 1, 632.37, 467.27)" opacity="1">
+    <g>
+      <defs>
+        <mask id="shape_nHJESl4NN_WuTTWJyqfHY_clip">
+          <rect x="-195.72394260943534" y="-221.43155925929767" width="268.18" height="282.03" fill="white"/>
+          <path d="M -80.9427299272046 -41.953510934189204 L -95.72394260943534 -39.40091389535576 L -90.54395014957467 -53.47811809632502" fill="none" stroke="none"/>
+        </mask>
+      </defs>
+      <g mask="url(#shape_nHJESl4NN_WuTTWJyqfHY_clip)">
+        <rect x="-100" y="-100" width="268.18" height="282.03" fill="transparent" stroke="none"/>
+        <path d="M-27.53816904171572,-121.43155925929773 A253.07224584079222 253.07 0 0 1 -95.72394260943534,-39.40091389535576" fill="none" stroke="#099268" stroke-width="5" stroke-dasharray="11.74 14.68" stroke-dashoffset="5"/>
+      </g>
+      <path d="M -80.9427299272046 -41.953510934189204 L -95.72394260943534 -39.40091389535576 L -90.54395014957467 -53.47811809632502" fill="none" stroke="#099268" stroke-width="5"/>
+    </g>
+  </g>
+  <g transform="matrix(1, 0, 0, 1, 634.37, 462.27)" opacity="1">
+    <g>
+      <defs>
+        <mask id="shape_yFE8tlO62zLgjcstlJGdC_clip">
+          <rect x="-521.5032660831482" y="-246.53192762439699" width="572.92" height="268.55" fill="white"/>
+          <path d="M -406.6691376076127 -75.74749533644881 L -421.5032660831482 -77.97204750965284 L -412.1596831513419 -89.70650352586668" fill="none" stroke="none"/>
+        </mask>
+      </defs>
+      <g mask="url(#shape_yFE8tlO62zLgjcstlJGdC_clip)">
+        <rect x="-100" y="-100" width="572.92" height="268.55" fill="transparent" stroke="none"/>
+        <path d="M-48.58239178764404,-146.34212183471578 A947.9469898655045 947.94 0 0 0 -421.5032660831482,-77.97204750965284" fill="none" stroke="#099268" stroke-width="5" stroke-dasharray="10.30 10.88" stroke-dashoffset="5"/>
+      </g>
+      <path d="M -406.6691376076127 -75.74749533644881 L -421.5032660831482 -77.97204750965284 L -412.1596831513419 -89.70650352586668" fill="none" stroke="#099268" stroke-width="5"/>
+    </g>
+  </g>
+  <g transform="matrix(1, 0, 0, 1, 1000.27, 314.49)" opacity="1">
+    <path d="M0.3551,22.8399 Q0.5978,16.1186 5.03,10.6 T15.7416,1.67 29.08,-2.4464 42.95,-0.9779 55.18,5.7679 63.75,16.7293 67.38,30.1713 65.52,43.9001 58.48,55.8463 47.32,64.1144 33.79,67.3991 20.11,65.183 8.40,57.7847 0.45,46.4059 -2.4578,32.8304 0.18,19.1842 7.95,7.6619 19.58,0.061 33.12,-0.8193 40.10,0.9386 40.10,0.9486 34.16,2.1907 22.72,5.3977 12.94,11.3423 6.28,20.6446 3.76,31.8029 5.76,43.0495 12.00,52.6521 21.41,59.1136 32.60,61.3278 43.83,58.9433 53.27,52.4295 59.39,42.81 61.21,31.5623 58.55,20.4532 51.80,11.2994 41.97,5.4909 30.71,3.9188 19.72,6.9079 10.73,13.8744 3.54,23.8963 0.12,29.564 0.35,22.8399 Z" fill="#099268"/>
+  </g>
+  <g transform="matrix(1, 0, 0, 1, 864.41, 355.47)" opacity="1">
+    <g>
+      <defs>
+        <mask id="shape_TsRedPUR0PDHnqUJLAypL_clip">
+          <rect x="-420.20684107956305" y="-98.20502879503601" width="658.09" height="294.13" fill="white"/>
+          <path d="M -306.54664670263526 102.12 L -320.20684107956305 95.93 L -308.0102443626903 87.20" fill="none" stroke="none"/>
+        </mask>
+      </defs>
+      <g mask="url(#shape_TsRedPUR0PDHnqUJLAypL_clip)">
+        <rect x="-100" y="-100" width="658.09" height="294.13" fill="transparent" stroke="none"/>
+        <path d="M137.8847061320364,1.7949712049640425 A2160.9353149781186 2160.93 0 0 1 -320.20684107956305,95.9330740147011" fill="none" stroke="#099268" stroke-width="5" stroke-dasharray="10.40 10.87" stroke-dashoffset="5"/>
+      </g>
+      <path d="M -306.54664670263526 102.12 L -320.20684107956305 95.93 L -308.0102443626903 87.20" fill="none" stroke="#099268" stroke-width="5"/>
+    </g>
+  </g>
+  <g transform="matrix(1, 0, 0, 1, 1003.95, 459.49)" opacity="1">
+    <path d="M3.9666,14.7256 Q5.7641,8.6627 11.05,4.6343 T22.6816,-1.2418 35.65,-2.4865 48.24,1.0693 58.66,8.9906 65.48,20.1893 67.69,33.1143 65.02,45.9358 57.81,56.846 47.16,64.4046 34.51,67.5672 21.56,65.8689 10.12,59.5643 1.75,49.4952 -2.3249,37.0948 -1.577,24.0999 3.89,12.2206 13.27,3.1716 25.60,-0.2415 32.41,-0.035 32.41,-0.0252 27.26,2.5422 17.49,7.9068 9.60,15.1042 4.83,24.7319 3.84,35.3494 6.83,45.5942 13.44,54.0447 22.66,59.5158 33.21,61.2658 43.66,59.0389 52.53,53.0982 58.64,44.3285 61.18,33.9585 59.73,23.3672 54.49,14.0436 46.21,7.2907 36.03,4.0555 25.41,4.7455 15.77,9.2236 6.77,16.5758 2.17,20.7938 3.96,14.7256 Z" fill="#099268"/>
+  </g>
+  <g transform="matrix(1, 0, 0, 1, 1003.63, 601.49)" opacity="1">
+    <path d="M28.0372,65.5952 Q20.6474,66.3012 13.97,62.0741 T3.0549,51.214 -2.1314,36.7362 -0.5828,21.4317 7.35,8.2982 20.21,-0.1248 35.46,-2.1966 50.04,2.491 61.22,12.9727 66.84,27.1969 65.77,42.48 58.26,55.8226 45.74,64.6384 30.66,67.2433 15.90,63.0755 4.36,52.9984 -1.6652,38.9226 -1.1223,23.5634 7.08,11.0978 13.32,6.2273 13.33,6.2339 10.16,12.1048 5.10,24.1594 4.21,36.7705 8.77,48.5279 17.95,57.1393 29.95,60.9837 42.42,59.2934 53.00,52.4261 59.62,41.6814 60.94,29.1458 56.71,17.2526 47.82,8.3064 35.97,4.1167 23.44,5.4461 12.70,11.9781 5.81,22.4626 4.08,34.9037 7.91,46.866 16.50,56.0599 28.62,62.2925 35.42,64.8793 28.03,65.5952 Z" class="depgraph-fill"/>
+  </g>
+  <g transform="matrix(1, 0, 0, 1, 882.41, 636.47)" opacity="1">
+    <g>
+      <defs>
+        <mask id="shape_P2YkL8fQuzD6-zEjB6MQj_clip">
+          <rect x="-187.4060785800255" y="-99.78544777762056" width="409.94" height="217.72" fill="white"/>
+          <path d="M -73.83063559233113 24.32 L -87.4060785800255 17.94 L -75.09291495310923 9.37" fill="none" stroke="none"/>
+        </mask>
+      </defs>
+      <g mask="url(#shape_P2YkL8fQuzD6-zEjB6MQj_clip)">
+        <rect x="-100" y="-100" width="409.94" height="217.72" fill="transparent" stroke="none"/>
+        <path d="M122.53634194940537,0.21455222237943872L-87.4060785800255,17.94450718285517" fill="none" class="depgraph-stroke" stroke-width="5" stroke-dasharray="none" stroke-dashoffset="none"/>
+      </g>
+      <path d="M -73.83063559233113 24.32 L -87.4060785800255 17.94 L -75.09291495310923 9.37" fill="none" class="depgraph-stroke" stroke-width="5"/>
+    </g>
+  </g>
+  <g transform="matrix(1, 0, 0, 1, 719.52, 511.80)" opacity="1">
+    <path d="M12.4489,59.2832 Q5.9773,56.5043 2.22,50.0513 T-2.2911,36.1631 -0.7637,21.6294 6.58,8.961 18.50,0.4423 32.83,-2.4213 47.09,0.744 58.78,9.4275 65.91,22.1726 67.20,36.7508 62.40,50.5695 52.42,61.2222 38.96,66.8682 24.38,66.4516 11.22,60.1206 1.8,48.9855 -2.2233,34.988 -0.1807,20.5711 8.60,9.3603 14.85,5.1692 14.85,5.1762 11.52,10.6001 5.86,21.7466 3.76,33.581 6.73,45.193 14.23,54.5746 24.88,60.1255 36.80,60.8758 47.95,56.6036 56.41,48.1364 60.74,36.9777 60.13,25.022 54.68,14.3714 45.38,6.8985 33.79,3.9191 22.00,5.9073 12.05,12.5267 5.68,22.6478 4.01,34.4627 7.30,45.9191 14.55,56.6696 18.92,62.0541 12.44,59.2832 Z" fill="#099268"/>
+  </g>
+  <g transform="matrix(1, 0, 0, 1, 874.41, 499.47)" opacity="1">
+    <g>
+      <defs>
+        <mask id="shape_k4splTVG2geIjq4HtRLIZ_clip">
+          <rect x="-181.05200135704428" y="-113.35661894464982" width="411.90" height="235.58" fill="white"/>
+          <path d="M -66.18589226619696 24.23 L -81.05200135704426 22.23 L -71.8871557231026 10.35" fill="none" stroke="none"/>
+        </mask>
+      </defs>
+      <g mask="url(#shape_k4splTVG2geIjq4HtRLIZ_clip)">
+        <rect x="-100" y="-100" width="411.90" height="235.58" fill="transparent" stroke="none"/>
+        <path d="M130.85282030693406,-11.562404332465746 A435.43967645474123 435.43 0 0 0 -81.05200135704426,22.232672416289176" fill="none" stroke="#099268" stroke-width="5" stroke-dasharray="10.30 11.34" stroke-dashoffset="5"/>
+      </g>
+      <path d="M -66.18589226619696 24.23 L -81.05200135704426 22.23 L -71.8871557231026 10.35" fill="none" stroke="#099268" stroke-width="5"/>
+    </g>
+  </g>
+  <g transform="matrix(1, 0, 0, 1, 736.41, 560.47)" opacity="1">
+    <g>
+      <defs>
+        <mask id="shape_KtvuH4OpWM5Lw9lw_RZEH_clip">
+          <rect x="-293.9105421586628" y="-199.03338266976482" width="382.47" height="267.25" fill="white"/>
+          <path d="M -182.9319704023163 -88.81227890398932 L -193.91054215866282 -99.03338266976482 L -179.56952076461118 -103.43055282514351" fill="none" stroke="none"/>
+        </mask>
+      </defs>
+      <g mask="url(#shape_KtvuH4OpWM5Lw9lw_RZEH_clip)">
+        <rect x="-100" y="-100" width="382.47" height="267.25" fill="transparent" stroke="none"/>
+        <path d="M-11.436232625878006,-31.77705454537511 A708.7585526134293 708.75 0 0 0 -193.91054215866282,-99.03338266976482" fill="none" stroke="#099268" stroke-width="5" stroke-dasharray="10.25 11.39" stroke-dashoffset="5"/>
+      </g>
+      <path d="M -182.9319704023163 -88.81227890398932 L -193.91054215866282 -99.03338266976482 L -179.56952076461118 -103.43055282514351" fill="none" stroke="#099268" stroke-width="5"/>
+    </g>
+  </g>
+  <g transform="matrix(1, 0, 0, 1, 731.41, 557.47)" opacity="1">
+    <g>
+      <defs>
+        <mask id="shape_x8qwKV53Nq7KFYiDWZQd5_clip">
+          <rect x="-300.3559904798832" y="-99.83607108036148" width="392.45" height="241.57" fill="white"/>
+          <path d="M -187.07055735483164 48.69 L -200.35599047988316 41.73 L -187.6822748284968 33.71" fill="none" stroke="none"/>
+        </mask>
+      </defs>
+      <g mask="url(#shape_x8qwKV53Nq7KFYiDWZQd5_clip)">
+        <rect x="-100" y="-100" width="392.45" height="241.57" fill="transparent" stroke="none"/>
+        <path d="M-7.8981140537617875,0.16392891963846523 A532.2605680375101 532.26 0 0 1 -200.35599047988316,41.73545178341624" fill="none" class="depgraph-stroke" stroke-width="5" stroke-dasharray="none" stroke-dashoffset="none"/>
+      </g>
+      <path d="M -187.07055735483164 48.69 L -200.35599047988316 41.73 L -187.6822748284968 33.71" fill="none" class="depgraph-stroke" stroke-width="5"/>
+    </g>
+  </g>
+  <g transform="matrix(1, 0, 0, 1, 153.70, 402.51)" opacity="1">
+    <g>
+      <text font-size="24px" font-family="ui-monospace, monospace" font-style="normal" font-weight="normal" line-height="32.400000000000006px" dominant-baseline="mathematical" alignment-baseline="mathematical"  stroke-width="2px" class="depgraph-fill">
+        <tspan alignment-baseline="mathematical" x="0px" y="12px">A1</tspan>
+      </text>
+      <text font-size="24px" font-family="ui-monospace, monospace" font-style="normal" font-weight="normal" line-height="32.400000000000006px" dominant-baseline="mathematical" alignment-baseline="mathematical" stroke="none" stroke-width="2px" class="depgraph-fill">
+        <tspan alignment-baseline="mathematical" x="0px" y="12px">A1</tspan>
+      </text>
+    </g>
+  </g>
+  <g transform="matrix(1, 0, 0, 1, 148.70, 493.92)" opacity="1">
+    <g>
+      <text font-size="24px" font-family="ui-monospace, monospace" font-style="normal" font-weight="normal" line-height="32.400000000000006px" dominant-baseline="mathematical" alignment-baseline="mathematical"  stroke-width="2px" class="depgraph-fill">
+        <tspan alignment-baseline="mathematical" x="0px" y="12px">A2</tspan>
+      </text>
+      <text font-size="24px" font-family="ui-monospace, monospace" font-style="normal" font-weight="normal" line-height="32.400000000000006px" dominant-baseline="mathematical" alignment-baseline="mathematical" stroke="none" stroke-width="2px" class="depgraph-fill">
+        <tspan alignment-baseline="mathematical" x="0px" y="12px">A2</tspan>
+      </text>
+    </g>
+  </g>
+  <g transform="matrix(1, 0, 0, 1, 158.04, 579.96)" opacity="1">
+    <g>
+      <text font-size="24px" font-family="ui-monospace, monospace" font-style="normal" font-weight="normal" line-height="32.400000000000006px" dominant-baseline="mathematical" alignment-baseline="mathematical"  stroke-width="2px" class="depgraph-fill">
+        <tspan alignment-baseline="mathematical" x="0px" y="12px">A3</tspan>
+      </text>
+      <text font-size="24px" font-family="ui-monospace, monospace" font-style="normal" font-weight="normal" line-height="32.400000000000006px" dominant-baseline="mathematical" alignment-baseline="mathematical" stroke="none" stroke-width="2px" class="depgraph-fill">
+        <tspan alignment-baseline="mathematical" x="0px" y="12px">A3</tspan>
+      </text>
+    </g>
+  </g>
+  <g transform="matrix(1, 0, 0, 1, 602.94, 300.34)" opacity="1">
+    <g>
+      <text font-size="24px" font-family="ui-monospace, monospace" font-style="normal" font-weight="normal" line-height="32.400000000000006px" dominant-baseline="mathematical" alignment-baseline="mathematical"  stroke-width="2px" class="depgraph-fill">
+        <tspan alignment-baseline="mathematical" x="0px" y="12px">C3</tspan>
+      </text>
+      <text font-size="24px" font-family="ui-monospace, monospace" font-style="normal" font-weight="normal" line-height="32.400000000000006px" dominant-baseline="mathematical" alignment-baseline="mathematical" stroke="none" stroke-width="2px" class="depgraph-fill">
+        <tspan alignment-baseline="mathematical" x="0px" y="12px">C3</tspan>
+      </text>
+    </g>
+  </g>
+  <g transform="matrix(1, 0, 0, 1, 737.76, 526.18)" opacity="1">
+    <g>
+      <text font-size="24px" font-family="ui-monospace, monospace" font-style="normal" font-weight="normal" line-height="32.400000000000006px" dominant-baseline="mathematical" alignment-baseline="mathematical"  stroke-width="2px" class="depgraph-fill">
+        <tspan alignment-baseline="mathematical" x="0px" y="12px">C4</tspan>
+      </text>
+      <text font-size="24px" font-family="ui-monospace, monospace" font-style="normal" font-weight="normal" line-height="32.400000000000006px" dominant-baseline="mathematical" alignment-baseline="mathematical" stroke="none" stroke-width="2px" class="depgraph-fill">
+        <tspan alignment-baseline="mathematical" x="0px" y="12px">C4</tspan>
+      </text>
+    </g>
+  </g>
+  <g transform="matrix(1, 0, 0, 1, 732.76, 642.69)" opacity="1">
+    <g>
+      <text font-size="24px" font-family="ui-monospace, monospace" font-style="normal" font-weight="normal" line-height="32.400000000000006px" dominant-baseline="mathematical" alignment-baseline="mathematical"  stroke-width="2px" class="depgraph-fill">
+        <tspan alignment-baseline="mathematical" x="0px" y="12px">C5</tspan>
+      </text>
+      <text font-size="24px" font-family="ui-monospace, monospace" font-style="normal" font-weight="normal" line-height="32.400000000000006px" dominant-baseline="mathematical" alignment-baseline="mathematical" stroke="none" stroke-width="2px" class="depgraph-fill">
+        <tspan alignment-baseline="mathematical" x="0px" y="12px">C5</tspan>
+      </text>
+    </g>
+  </g>
+  <g transform="matrix(1, 0, 0, 1, 1016.34, 329.02)" opacity="1">
+    <g>
+      <text font-size="24px" font-family="ui-monospace, monospace" font-style="normal" font-weight="normal" line-height="32.400000000000006px" dominant-baseline="mathematical" alignment-baseline="mathematical"  stroke-width="2px" class="depgraph-fill">
+        <tspan alignment-baseline="mathematical" x="0px" y="12px">C6</tspan>
+      </text>
+      <text font-size="24px" font-family="ui-monospace, monospace" font-style="normal" font-weight="normal" line-height="32.400000000000006px" dominant-baseline="mathematical" alignment-baseline="mathematical" stroke="none" stroke-width="2px" class="depgraph-fill">
+        <tspan alignment-baseline="mathematical" x="0px" y="12px">C6</tspan>
+      </text>
+    </g>
+  </g>
+  <g transform="matrix(1, 0, 0, 1, 1022.10, 477.79)" opacity="1">
+    <g>
+      <text font-size="24px" font-family="ui-monospace, monospace" font-style="normal" font-weight="normal" line-height="32.400000000000006px" dominant-baseline="mathematical" alignment-baseline="mathematical"  stroke-width="2px" class="depgraph-fill">
+        <tspan alignment-baseline="mathematical" x="0px" y="12px">C7</tspan>
+      </text>
+      <text font-size="24px" font-family="ui-monospace, monospace" font-style="normal" font-weight="normal" line-height="32.400000000000006px" dominant-baseline="mathematical" alignment-baseline="mathematical" stroke="none" stroke-width="2px" class="depgraph-fill">
+        <tspan alignment-baseline="mathematical" x="0px" y="12px">C7</tspan>
+      </text>
+    </g>
+  </g>
+  <g transform="matrix(1, 0, 0, 1, 1020.68, 615.81)" opacity="1">
+    <g>
+      <text font-size="24px" font-family="ui-monospace, monospace" font-style="normal" font-weight="normal" line-height="32.400000000000006px" dominant-baseline="mathematical" alignment-baseline="mathematical"  stroke-width="2px" class="depgraph-fill">
+        <tspan alignment-baseline="mathematical" x="0px" y="12px">C8</tspan>
+      </text>
+      <text font-size="24px" font-family="ui-monospace, monospace" font-style="normal" font-weight="normal" line-height="32.400000000000006px" dominant-baseline="mathematical" alignment-baseline="mathematical" stroke="none" stroke-width="2px" class="depgraph-fill">
+        <tspan alignment-baseline="mathematical" x="0px" y="12px">C8</tspan>
+      </text>
+    </g>
+  </g>
+  <g transform="matrix(1, 0, 0, 1, 481.44, 436.56)" opacity="1">
+    <g>
+      <text font-size="24px" font-family="ui-monospace, monospace" font-style="normal" font-weight="normal" line-height="32.400000000000006px" dominant-baseline="mathematical" alignment-baseline="mathematical"  stroke-width="2px" class="depgraph-fill">
+        <tspan alignment-baseline="mathematical" x="0px" y="12px">C1</tspan>
+      </text>
+      <text font-size="24px" font-family="ui-monospace, monospace" font-style="normal" font-weight="normal" line-height="32.400000000000006px" dominant-baseline="mathematical" alignment-baseline="mathematical" stroke="none" stroke-width="2px" class="depgraph-fill">
+        <tspan alignment-baseline="mathematical" x="0px" y="12px">C1</tspan>
+      </text>
+    </g>
+  </g>
+  <g transform="matrix(1, 0, 0, 1, 471.06, 588.92)" opacity="1">
+    <g>
+      <text font-size="24px" font-family="ui-monospace, monospace" font-style="normal" font-weight="normal" line-height="32.400000000000006px" dominant-baseline="mathematical" alignment-baseline="mathematical"  stroke-width="2px" class="depgraph-fill">
+        <tspan alignment-baseline="mathematical" x="0px" y="12px">C2</tspan>
+      </text>
+      <text font-size="24px" font-family="ui-monospace, monospace" font-style="normal" font-weight="normal" line-height="32.400000000000006px" dominant-baseline="mathematical" alignment-baseline="mathematical" stroke="none" stroke-width="2px" class="depgraph-fill">
+        <tspan alignment-baseline="mathematical" x="0px" y="12px">C2</tspan>
+      </text>
+    </g>
+  </g>
+</svg>
+
+</div>
+<h4 id="dynamic-dependencies">Dynamic Dependencies</h4>
+<p>It&#8217;s worth noting that when a <code>Calc</code> recalculates, it might end up with
+a new set of dependencies. Perhaps when <code>C7</code> recalculated, it no longer
+read the value of <code>C4</code>, but instead read the value of <code>C5</code>. We would
+end up with a graph like this:</p>
+<div class="frame75 pin-to-above">
+<?xml version="1.0"?>
+<svg xmlns="http://www.w3.org/2000/svg" direction="ltr" viewBox="100 252.93 1000.95 469.53" stroke-linecap="round" stroke-linejoin="round" style="background-color: transparent;">
+  <g transform="matrix(1, 0, 0, 1, 139, 390)" opacity="1">
+    <path d="M9.9967,-0.2567 L51.3355,-1.3183 Q61.3322,-1.575 60.87,8.4146 L59.0559,48.3899 Q58.6008,58.3795 48.60,58.4725 L11.3257,58.8192 Q1.3261,58.9122 1.34,48.9122 L1.4035,8.9598 Q1.419,-1.0401 11.41,-0.8063 L50.2158,0.1012 Q60.2131,0.335 59.98,10.3325 L59.101,49.8786 Q58.8766,59.8761 48.87,59.7611 L10.1047,59.3154 Q0.1053,59.2004 -0.1135,49.2028 L-0.9929,9.0194 Q-1.2117,-0.9782 9.99,-0.2567 " fill="none" class="depgraph-stroke" stroke-width="5"/>
+  </g>
+  <g transform="matrix(1, 0, 0, 1, 132, 478)" opacity="1">
+    <path d="M9.9986,-0.1697 L51.0858,-0.867 Q61.0844,-1.0366 61.10,8.9633 L61.1806,50.7522 Q61.1992,60.7522 51.20,60.5965 L11.0935,59.972 Q1.0947,59.8164 1.12,49.8164 L1.2335,11.5732 Q1.2622,1.5733 11.26,1.5248 L49.0709,1.3413 Q59.0708,1.2928 58.95,11.2921 L58.4866,51.1749 Q58.3695,61.1742 48.37,60.8899 L9.985,59.7981 Q-0.0109,59.5138 0.21,49.5164 L1.0929,11.0878 Q1.3208,1.0904 9.99,-0.1697 " fill="none" class="depgraph-stroke" stroke-width="5"/>
+  </g>
+  <g transform="matrix(1, 0, 0, 1, 141, 565)" opacity="1">
+    <path d="M10,-0.0282 L51.6537,-0.1459 Q61.6536,-0.1742 61.50,9.8248 L60.9405,49.1038 Q60.7959,59.1028 50.79,59.3734 L10.7559,60.4573 Q0.7596,60.7279 0.61,50.729 L-0.0191,8.4804 Q-0.1681,-1.5185 9.82,-1.2201 L50.3738,-0.0098 Q60.3693,0.2886 60.51,10.2875 L61.0778,49.4966 Q61.2217,59.4955 51.22,59.825 L10.5247,61.1668 Q0.5302,61.4963 0.19,51.5018 L-1.1501,10.925 Q-1.4822,0.9305 10,-0.0282 " fill="none" class="depgraph-stroke" stroke-width="5"/>
+  </g>
+  <g transform="matrix(1, 0, 0, 1, 464.37, 420.60)" opacity="1">
+    <path d="M5.3509,52.0277 Q-0.128,47.2626 -1.7,39.6955 T-1.552,24.6014 4.94,10.9895 16.57,1.4023 31.13,-2.3906 45.96,0.3023 58.26,9.0084 65.69,22.0464 66.94,36.9854 61.84,51.088 51.27,61.71 37.24,66.9437 22.31,65.7888 9.24,58.4166 0.48,46.1928 -2.2907,31.4215 1.43,16.8924 10.85,5.2157 24.64,0.1946 32.43,0.0004 32.44,0.0102 26.52,2.8293 15.52,9.4401 7.38,18.7766 3.89,30.6028 5.78,42.835 12.61,53.1846 23.14,59.674 35.44,61.1063 47.22,57.2143 56.25,48.7249 60.81,37.1948 60.13,24.852 54.34,13.98 44.48,6.5663 32.41,3.9565 20.43,6.6358 10.66,14.1274 4.95,25.0312 4.39,37.3519 8.14,50.1788 10.83,56.787 5.35,52.0277 Z" class="depgraph-fill"/>
+  </g>
+  <g transform="matrix(1, 0, 0, 1, 328, 416)" opacity="1">
+    <g>
+      <defs>
+        <mask id="shape_S-Uus0NFmYGYezjroerrN_clip">
+          <rect x="-221.00947280945599" y="-53.586667418074285" width="458.79" height="240.79" fill="white"/>
+          <path d="M -107.67132256333163 94.06 L -121.00947280945597 87.20 L -108.39730833750632 79.08" fill="none" stroke="none"/>
+        </mask>
+      </defs>
+      <g mask="url(#shape_S-Uus0NFmYGYezjroerrN_clip)">
+        <rect x="-100" y="-100" width="458.79" height="240.79" fill="transparent" stroke="none"/>
+        <path d="M137.78735921321334,46.41333258192577 A1146.9865798805959 1146.98 0 0 1 -121.00947280945597,87.20590878763483" fill="none" class="depgraph-stroke" stroke-width="5" stroke-dasharray="none" stroke-dashoffset="none"/>
+      </g>
+      <path d="M -107.67132256333163 94.06 L -121.00947280945597 87.20 L -108.39730833750632 79.08" fill="none" class="depgraph-stroke" stroke-width="5"/>
+    </g>
+  </g>
+  <g transform="matrix(1, 0, 0, 1, 333, 422)" opacity="1">
+    <g>
+      <defs>
+        <mask id="shape_MuWr9XOb2cbTfhnwf_mlb_clip">
+          <rect x="-219.0022369565704" y="-98.712730774781" width="451.69" height="223.13" fill="white"/>
+          <path d="M -105.97606087952738 8.78 L -119.00223695657043 1.34 L -106.04794929318058 -6.216779852340175" fill="none" stroke="none"/>
+        </mask>
+      </defs>
+      <g mask="url(#shape_MuWr9XOb2cbTfhnwf_mlb_clip)">
+        <rect x="-100" y="-100" width="451.69" height="223.13" fill="transparent" stroke="none"/>
+        <path d="M132.6899829470144,24.42296476960871 A1237.6474787048699 1237.64 0 0 0 -119.00223695657043,1.3453912072263847" fill="none" class="depgraph-stroke" stroke-width="5" stroke-dasharray="none" stroke-dashoffset="none"/>
+      </g>
+      <path d="M -105.97606087952738 8.78 L -119.00223695657043 1.34 L -106.04794929318058 -6.216779852340175" fill="none" class="depgraph-stroke" stroke-width="5"/>
+    </g>
+  </g>
+  <g transform="matrix(1, 0, 0, 1, 452.74, 572.60)" opacity="1">
+    <path d="M65.5588,27.6212 Q68.2476,34.3734 66.20,41.814 T59.1942,55.1351 47.20,64.2391 32.47,67.4478 17.79,64.2083 5.82,55.0737 -1.156,41.7445 -1.8371,26.7711 3.80,12.8802 14.75,2.6285 28.99,-2.0635 43.85,-0.3472 56.63,7.454 64.93,19.9229 67.24,34.7299 63.14,49.1313 53.31,60.4278 39.64,66.5847 25.09,64.8856 18.02,61.5655 18.02,61.5558 24.60,61.7074 37.38,60.748 48.78,56.0522 57.17,47.0514 60.99,35.3393 59.57,23.0675 53.11,12.5411 42.79,5.6886 30.57,3.8102 18.68,7.2999 9.41,15.4857 4.47,26.7881 4.69,39.0591 10.05,50.1267 19.55,57.9436 31.44,61.0334 43.56,58.8511 53.60,51.7769 59.71,41.1169 62.22,27.9865 62.86,20.8705 65.55,27.6212 Z" class="depgraph-fill"/>
+  </g>
+  <g transform="matrix(1, 0, 0, 1, 328, 618)" opacity="1">
+    <g>
+      <defs>
+        <mask id="shape_HTmN5rub6AqIs0e4ND-yl_clip">
+          <rect x="-212.40539315801647" y="-111.19381198382791" width="438.46" height="214.54" fill="white"/>
+          <path d="M -101.24339284486402 -1.1733454772632292 L -112.40539315801647 -11.193811983827914 L -98.14641444898412 -15.850154558785448" fill="none" stroke="none"/>
+        </mask>
+      </defs>
+      <g mask="url(#shape_HTmN5rub6AqIs0e4ND-yl_clip)">
+        <rect x="-100" y="-100" width="438.46" height="214.54" fill="transparent" stroke="none"/>
+        <path d="M126.0570262319568,-6.2419040541955155 A601.250492342686 601.25 0 0 1 -112.40539315801647,-11.193811983827914" fill="none" class="depgraph-stroke" stroke-width="5" stroke-dasharray="none" stroke-dashoffset="none"/>
+      </g>
+      <path d="M -101.24339284486402 -1.1733454772632292 L -112.40539315801647 -11.193811983827914 L -98.14641444898412 -15.850154558785448" fill="none" class="depgraph-stroke" stroke-width="5"/>
+    </g>
+  </g>
+  <g transform="matrix(1, 0, 0, 1, 715.83, 625.80)" opacity="1">
+    <path d="M59.5203,52.2089 Q56.8167,58.7785 50.34,62.6092 T36.4118,67.2944 21.78,65.8327 9.04,58.4642 0.45,46.5226 -2.4709,32.124 0.79,17.7672 9.67,6.0216 22.56,-1.0006 37.17,-2.0624 50.96,2.9298 61.50,13.0982 66.87,26.7417 66.17,41.398 59.60,54.4706 48.20,63.6223 34.00,67.2924 19.56,64.851 8.60,55.6157 4.61,49.1579 4.62,49.1511 9.94,52.728 20.91,58.8221 32.74,61.2247 44.51,58.5381 54.12,51.3269 59.92,40.7706 60.93,28.728 56.91,17.3738 48.52,8.7006 37.33,4.2077 25.36,4.7711 14.63,10.209 7.03,19.5401 3.92,31.1727 5.91,42.9918 12.61,52.9743 22.78,59.3636 34.65,60.9849 46.15,57.5768 56.87,50.1383 62.21,45.6334 59.52,52.2089 Z" class="depgraph-fill"/>
+  </g>
+  <g transform="matrix(1, 0, 0, 1, 1000.30, 495.58)" opacity="1">
+    <g>
+      <defs>
+        <mask id="shape_Xx09-NVgfARY49DmwBdEm_clip">
+          <rect x="-309.332342382718" y="-80.2831014377357" width="421.87" height="324.28" fill="white"/>
+          <path d="M -194.74035826924174 147.47 L -209.332342382718 144.00 L -199.0271145884474 133.10" fill="none" stroke="none"/>
+        </mask>
+      </defs>
+      <g mask="url(#shape_Xx09-NVgfARY49DmwBdEm_clip)">
+        <rect x="-100" y="-100" width="421.87" height="324.28" fill="transparent" stroke="none"/>
+        <path d="M12.547117266895384,19.716898562264305 A547.2927328634555 547.29 0 0 1 -209.332342382718,144.00328422308223" fill="none" class="depgraph-stroke" stroke-width="5" stroke-dasharray="none" stroke-dashoffset="none"/>
+      </g>
+      <path d="M -194.74035826924174 147.47 L -209.332342382718 144.00 L -199.0271145884474 133.10" fill="none" class="depgraph-stroke" stroke-width="5"/>
+    </g>
+  </g>
+  <g transform="matrix(1, 0, 0, 1, 729.41, 681.47)" opacity="1">
+    <g>
+      <defs>
+        <mask id="shape_X8HvbM0krabnp7OGqGHY6_clip">
+          <rect x="-300.73259218453165" y="-160.6716260639862" width="388.46" height="237.69" fill="white"/>
+          <path d="M -191.1996896308442 -49.090444392761974 L -200.73259218453163 -60.671626063986196 L -185.93654337456502 -63.13677101166893" fill="none" stroke="none"/>
+        </mask>
+      </defs>
+      <g mask="url(#shape_X8HvbM0krabnp7OGqGHY6_clip)">
+        <rect x="-100" y="-100" width="388.46" height="237.69" fill="transparent" stroke="none"/>
+        <path d="M-12.26591343011512,-22.976430069392563 A553.0034356305026 553.00 0 0 1 -200.73259218453163,-60.671626063986196" fill="none" class="depgraph-stroke" stroke-width="5" stroke-dasharray="none" stroke-dashoffset="none"/>
+      </g>
+      <path d="M -191.1996896308442 -49.090444392761974 L -200.73259218453163 -60.671626063986196 L -185.93654337456502 -63.13677101166893" fill="none" class="depgraph-stroke" stroke-width="5"/>
+    </g>
+  </g>
+  <g transform="matrix(1, 0, 0, 1, 584.47, 284.60)" opacity="1">
+    <path d="M7.6692,10.1256 Q11.0072,3.8829 17.87,0.7386 T32.2456,-2.4495 46.64,0.5092 58.57,9.1662 65.82,22.0194 67.13,36.6408 62.36,50.4986 52.32,61.1729 38.78,66.7707 24.09,66.3197 10.89,59.8875 1.55,48.5781 -2.2986,34.4103 -0.007,19.946 7.99,7.6679 20.40,-0.2303 34.96,-2.2752 49.05,1.8517 58.91,12.2817 62.15,19.1465 62.14,19.1525 57.24,15.0021 47.00,7.6969 35.52,3.9034 23.52,5.2422 13.12,11.4116 6.17,21.2598 3.87,33.0757 6.62,44.8345 13.93,54.4256 24.60,60.0646 36.68,60.8434 47.93,56.6204 56.47,48.117 60.77,36.8965 60.06,24.8916 54.49,14.2144 44.99,6.8203 33.32,3.9883 21.51,6.1659 10.08,12.4521 4.33,16.375 7.66,10.1256 Z" class="depgraph-fill"/>
+  </g>
+  <g transform="matrix(1, 0, 0, 1, 632.37, 467.27)" opacity="1">
+    <g>
+      <defs>
+        <mask id="shape_nHJESl4NN_WuTTWJyqfHY_clip">
+          <rect x="-195.72394260943534" y="-221.43155925929767" width="268.18" height="282.03" fill="white"/>
+          <path d="M -80.9427299272046 -41.953510934189204 L -95.72394260943534 -39.40091389535576 L -90.54395014957467 -53.47811809632502" fill="none" stroke="none"/>
+        </mask>
+      </defs>
+      <g mask="url(#shape_nHJESl4NN_WuTTWJyqfHY_clip)">
+        <rect x="-100" y="-100" width="268.18" height="282.03" fill="transparent" stroke="none"/>
+        <path d="M-27.53816904171572,-121.43155925929773 A253.07224584079222 253.07 0 0 1 -95.72394260943534,-39.40091389535576" fill="none" class="depgraph-stroke" stroke-width="5" stroke-dasharray="none" stroke-dashoffset="none"/>
+      </g>
+      <path d="M -80.9427299272046 -41.953510934189204 L -95.72394260943534 -39.40091389535576 L -90.54395014957467 -53.47811809632502" fill="none" class="depgraph-stroke" stroke-width="5"/>
+    </g>
+  </g>
+  <g transform="matrix(1, 0, 0, 1, 634.37, 462.27)" opacity="1">
+    <g>
+      <defs>
+        <mask id="shape_yFE8tlO62zLgjcstlJGdC_clip">
+          <rect x="-521.5032660831482" y="-246.53192762439699" width="572.92" height="268.55" fill="white"/>
+          <path d="M -406.6691376076127 -75.74749533644881 L -421.5032660831482 -77.97204750965284 L -412.1596831513419 -89.70650352586668" fill="none" stroke="none"/>
+        </mask>
+      </defs>
+      <g mask="url(#shape_yFE8tlO62zLgjcstlJGdC_clip)">
+        <rect x="-100" y="-100" width="572.92" height="268.55" fill="transparent" stroke="none"/>
+        <path d="M-48.58239178764404,-146.34212183471578 A947.9469898655045 947.94 0 0 0 -421.5032660831482,-77.97204750965284" fill="none" class="depgraph-stroke" stroke-width="5" stroke-dasharray="none" stroke-dashoffset="none"/>
+      </g>
+      <path d="M -406.6691376076127 -75.74749533644881 L -421.5032660831482 -77.97204750965284 L -412.1596831513419 -89.70650352586668" fill="none" class="depgraph-stroke" stroke-width="5"/>
+    </g>
+  </g>
+  <g transform="matrix(1, 0, 0, 1, 1000.27, 314.49)" opacity="1">
+    <path d="M0.3551,22.8399 Q0.5978,16.1186 5.03,10.6 T15.7416,1.67 29.08,-2.4464 42.95,-0.9779 55.18,5.7679 63.75,16.7293 67.38,30.1713 65.52,43.9001 58.48,55.8463 47.32,64.1144 33.79,67.3991 20.11,65.183 8.40,57.7847 0.45,46.4059 -2.4578,32.8304 0.18,19.1842 7.95,7.6619 19.58,0.061 33.12,-0.8193 40.10,0.9386 40.10,0.9486 34.16,2.1907 22.72,5.3977 12.94,11.3423 6.28,20.6446 3.76,31.8029 5.76,43.0495 12.00,52.6521 21.41,59.1136 32.60,61.3278 43.83,58.9433 53.27,52.4295 59.39,42.81 61.21,31.5623 58.55,20.4532 51.80,11.2994 41.97,5.4909 30.71,3.9188 19.72,6.9079 10.73,13.8744 3.54,23.8963 0.12,29.564 0.35,22.8399 Z" class="depgraph-fill"/>
+  </g>
+  <g transform="matrix(1, 0, 0, 1, 864.41, 355.47)" opacity="1">
+    <g>
+      <defs>
+        <mask id="shape_TsRedPUR0PDHnqUJLAypL_clip">
+          <rect x="-420.20684107956305" y="-98.20502879503601" width="658.09" height="294.13" fill="white"/>
+          <path d="M -306.54664670263526 102.12 L -320.20684107956305 95.93 L -308.0102443626903 87.20" fill="none" stroke="none"/>
+        </mask>
+      </defs>
+      <g mask="url(#shape_TsRedPUR0PDHnqUJLAypL_clip)">
+        <rect x="-100" y="-100" width="658.09" height="294.13" fill="transparent" stroke="none"/>
+        <path d="M137.8847061320364,1.7949712049640425 A2160.9353149781186 2160.93 0 0 1 -320.20684107956305,95.9330740147011" fill="none" class="depgraph-stroke" stroke-width="5" stroke-dasharray="none" stroke-dashoffset="none"/>
+      </g>
+      <path d="M -306.54664670263526 102.12 L -320.20684107956305 95.93 L -308.0102443626903 87.20" fill="none" class="depgraph-stroke" stroke-width="5"/>
+    </g>
+  </g>
+  <g transform="matrix(1, 0, 0, 1, 1003.95, 459.49)" opacity="1">
+    <path d="M3.9666,14.7256 Q5.7641,8.6627 11.05,4.6343 T22.6816,-1.2418 35.65,-2.4865 48.24,1.0693 58.66,8.9906 65.48,20.1893 67.69,33.1143 65.02,45.9358 57.81,56.846 47.16,64.4046 34.51,67.5672 21.56,65.8689 10.12,59.5643 1.75,49.4952 -2.3249,37.0948 -1.577,24.0999 3.89,12.2206 13.27,3.1716 25.60,-0.2415 32.41,-0.035 32.41,-0.0252 27.26,2.5422 17.49,7.9068 9.60,15.1042 4.83,24.7319 3.84,35.3494 6.83,45.5942 13.44,54.0447 22.66,59.5158 33.21,61.2658 43.66,59.0389 52.53,53.0982 58.64,44.3285 61.18,33.9585 59.73,23.3672 54.49,14.0436 46.21,7.2907 36.03,4.0555 25.41,4.7455 15.77,9.2236 6.77,16.5758 2.17,20.7938 3.96,14.7256 Z" class="depgraph-fill"/>
+  </g>
+  <g transform="matrix(1, 0, 0, 1, 1003.63, 601.49)" opacity="1">
+    <path d="M28.0372,65.5952 Q20.6474,66.3012 13.97,62.0741 T3.0549,51.214 -2.1314,36.7362 -0.5828,21.4317 7.35,8.2982 20.21,-0.1248 35.46,-2.1966 50.04,2.491 61.22,12.9727 66.84,27.1969 65.77,42.48 58.26,55.8226 45.74,64.6384 30.66,67.2433 15.90,63.0755 4.36,52.9984 -1.6652,38.9226 -1.1223,23.5634 7.08,11.0978 13.32,6.2273 13.33,6.2339 10.16,12.1048 5.10,24.1594 4.21,36.7705 8.77,48.5279 17.95,57.1393 29.95,60.9837 42.42,59.2934 53.00,52.4261 59.62,41.6814 60.94,29.1458 56.71,17.2526 47.82,8.3064 35.97,4.1167 23.44,5.4461 12.70,11.9781 5.81,22.4626 4.08,34.9037 7.91,46.866 16.50,56.0599 28.62,62.2925 35.42,64.8793 28.03,65.5952 Z" class="depgraph-fill"/>
+  </g>
+  <g transform="matrix(1, 0, 0, 1, 882.41, 636.47)" opacity="1">
+    <g>
+      <defs>
+        <mask id="shape_P2YkL8fQuzD6-zEjB6MQj_clip">
+          <rect x="-187.4060785800255" y="-99.78544777762056" width="409.94" height="217.72" fill="white"/>
+          <path d="M -73.83063559233113 24.32 L -87.4060785800255 17.94 L -75.09291495310923 9.37" fill="none" stroke="none"/>
+        </mask>
+      </defs>
+      <g mask="url(#shape_P2YkL8fQuzD6-zEjB6MQj_clip)">
+        <rect x="-100" y="-100" width="409.94" height="217.72" fill="transparent" stroke="none"/>
+        <path d="M122.53634194940537,0.21455222237943872L-87.4060785800255,17.94450718285517" fill="none" class="depgraph-stroke" stroke-width="5" stroke-dasharray="none" stroke-dashoffset="none"/>
+      </g>
+      <path d="M -73.83063559233113 24.32 L -87.4060785800255 17.94 L -75.09291495310923 9.37" fill="none" class="depgraph-stroke" stroke-width="5"/>
+    </g>
+  </g>
+  <g transform="matrix(1, 0, 0, 1, 719.52, 511.80)" opacity="1">
+    <path d="M12.4489,59.2832 Q5.9773,56.5043 2.22,50.0513 T-2.2911,36.1631 -0.7637,21.6294 6.58,8.961 18.50,0.4423 32.83,-2.4213 47.09,0.744 58.78,9.4275 65.91,22.1726 67.20,36.7508 62.40,50.5695 52.42,61.2222 38.96,66.8682 24.38,66.4516 11.22,60.1206 1.8,48.9855 -2.2233,34.988 -0.1807,20.5711 8.60,9.3603 14.85,5.1692 14.85,5.1762 11.52,10.6001 5.86,21.7466 3.76,33.581 6.73,45.193 14.23,54.5746 24.88,60.1255 36.80,60.8758 47.95,56.6036 56.41,48.1364 60.74,36.9777 60.13,25.022 54.68,14.3714 45.38,6.8985 33.79,3.9191 22.00,5.9073 12.05,12.5267 5.68,22.6478 4.01,34.4627 7.30,45.9191 14.55,56.6696 18.92,62.0541 12.44,59.2832 Z" class="depgraph-fill"/>
+  </g>
+  <g transform="matrix(1, 0, 0, 1, 736.41, 560.47)" opacity="1">
+    <g>
+      <defs>
+        <mask id="shape_KtvuH4OpWM5Lw9lw_RZEH_clip">
+          <rect x="-293.9105421586628" y="-199.03338266976482" width="382.47" height="267.25" fill="white"/>
+          <path d="M -182.9319704023163 -88.81227890398932 L -193.91054215866282 -99.03338266976482 L -179.56952076461118 -103.43055282514351" fill="none" stroke="none"/>
+        </mask>
+      </defs>
+      <g mask="url(#shape_KtvuH4OpWM5Lw9lw_RZEH_clip)">
+        <rect x="-100" y="-100" width="382.47" height="267.25" fill="transparent" stroke="none"/>
+        <path d="M-11.436232625878006,-31.77705454537511 A708.7585526134293 708.75 0 0 0 -193.91054215866282,-99.03338266976482" fill="none" class="depgraph-stroke" stroke-width="5" stroke-dasharray="none" stroke-dashoffset="none"/>
+      </g>
+      <path d="M -182.9319704023163 -88.81227890398932 L -193.91054215866282 -99.03338266976482 L -179.56952076461118 -103.43055282514351" fill="none" class="depgraph-stroke" stroke-width="5"/>
+    </g>
+  </g>
+  <g transform="matrix(1, 0, 0, 1, 731.41, 557.47)" opacity="1">
+    <g>
+      <defs>
+        <mask id="shape_x8qwKV53Nq7KFYiDWZQd5_clip">
+          <rect x="-300.3559904798832" y="-99.83607108036148" width="392.45" height="241.57" fill="white"/>
+          <path d="M -187.07055735483164 48.69 L -200.35599047988316 41.73 L -187.6822748284968 33.71" fill="none" stroke="none"/>
+        </mask>
+      </defs>
+      <g mask="url(#shape_x8qwKV53Nq7KFYiDWZQd5_clip)">
+        <rect x="-100" y="-100" width="392.45" height="241.57" fill="transparent" stroke="none"/>
+        <path d="M-7.8981140537617875,0.16392891963846523 A532.2605680375101 532.26 0 0 1 -200.35599047988316,41.73545178341624" fill="none" class="depgraph-stroke" stroke-width="5" stroke-dasharray="none" stroke-dashoffset="none"/>
+      </g>
+      <path d="M -187.07055735483164 48.69 L -200.35599047988316 41.73 L -187.6822748284968 33.71" fill="none" class="depgraph-stroke" stroke-width="5"/>
+    </g>
+  </g>
+  <g transform="matrix(1, 0, 0, 1, 153.70, 402.51)" opacity="1">
+    <g>
+      <text font-size="24px" font-family="ui-monospace, monospace" font-style="normal" font-weight="normal" line-height="32.400000000000006px" dominant-baseline="mathematical" alignment-baseline="mathematical"  stroke-width="2px" class="depgraph-fill">
+        <tspan alignment-baseline="mathematical" x="0px" y="12px">A1</tspan>
+      </text>
+      <text font-size="24px" font-family="ui-monospace, monospace" font-style="normal" font-weight="normal" line-height="32.400000000000006px" dominant-baseline="mathematical" alignment-baseline="mathematical" stroke="none" stroke-width="2px" class="depgraph-fill">
+        <tspan alignment-baseline="mathematical" x="0px" y="12px">A1</tspan>
+      </text>
+    </g>
+  </g>
+  <g transform="matrix(1, 0, 0, 1, 148.70, 493.92)" opacity="1">
+    <g>
+      <text font-size="24px" font-family="ui-monospace, monospace" font-style="normal" font-weight="normal" line-height="32.400000000000006px" dominant-baseline="mathematical" alignment-baseline="mathematical"  stroke-width="2px" class="depgraph-fill">
+        <tspan alignment-baseline="mathematical" x="0px" y="12px">A2</tspan>
+      </text>
+      <text font-size="24px" font-family="ui-monospace, monospace" font-style="normal" font-weight="normal" line-height="32.400000000000006px" dominant-baseline="mathematical" alignment-baseline="mathematical" stroke="none" stroke-width="2px" class="depgraph-fill">
+        <tspan alignment-baseline="mathematical" x="0px" y="12px">A2</tspan>
+      </text>
+    </g>
+  </g>
+  <g transform="matrix(1, 0, 0, 1, 158.04, 579.96)" opacity="1">
+    <g>
+      <text font-size="24px" font-family="ui-monospace, monospace" font-style="normal" font-weight="normal" line-height="32.400000000000006px" dominant-baseline="mathematical" alignment-baseline="mathematical"  stroke-width="2px" class="depgraph-fill">
+        <tspan alignment-baseline="mathematical" x="0px" y="12px">A3</tspan>
+      </text>
+      <text font-size="24px" font-family="ui-monospace, monospace" font-style="normal" font-weight="normal" line-height="32.400000000000006px" dominant-baseline="mathematical" alignment-baseline="mathematical" stroke="none" stroke-width="2px" class="depgraph-fill">
+        <tspan alignment-baseline="mathematical" x="0px" y="12px">A3</tspan>
+      </text>
+    </g>
+  </g>
+  <g transform="matrix(1, 0, 0, 1, 602.94, 300.34)" opacity="1">
+    <g>
+      <text font-size="24px" font-family="ui-monospace, monospace" font-style="normal" font-weight="normal" line-height="32.400000000000006px" dominant-baseline="mathematical" alignment-baseline="mathematical"  stroke-width="2px" class="depgraph-fill">
+        <tspan alignment-baseline="mathematical" x="0px" y="12px">C3</tspan>
+      </text>
+      <text font-size="24px" font-family="ui-monospace, monospace" font-style="normal" font-weight="normal" line-height="32.400000000000006px" dominant-baseline="mathematical" alignment-baseline="mathematical" stroke="none" stroke-width="2px" class="depgraph-fill">
+        <tspan alignment-baseline="mathematical" x="0px" y="12px">C3</tspan>
+      </text>
+    </g>
+  </g>
+  <g transform="matrix(1, 0, 0, 1, 737.76, 526.18)" opacity="1">
+    <g>
+      <text font-size="24px" font-family="ui-monospace, monospace" font-style="normal" font-weight="normal" line-height="32.400000000000006px" dominant-baseline="mathematical" alignment-baseline="mathematical"  stroke-width="2px" class="depgraph-fill">
+        <tspan alignment-baseline="mathematical" x="0px" y="12px">C4</tspan>
+      </text>
+      <text font-size="24px" font-family="ui-monospace, monospace" font-style="normal" font-weight="normal" line-height="32.400000000000006px" dominant-baseline="mathematical" alignment-baseline="mathematical" stroke="none" stroke-width="2px" class="depgraph-fill">
+        <tspan alignment-baseline="mathematical" x="0px" y="12px">C4</tspan>
+      </text>
+    </g>
+  </g>
+  <g transform="matrix(1, 0, 0, 1, 732.76, 642.69)" opacity="1">
+    <g>
+      <text font-size="24px" font-family="ui-monospace, monospace" font-style="normal" font-weight="normal" line-height="32.400000000000006px" dominant-baseline="mathematical" alignment-baseline="mathematical"  stroke-width="2px" class="depgraph-fill">
+        <tspan alignment-baseline="mathematical" x="0px" y="12px">C5</tspan>
+      </text>
+      <text font-size="24px" font-family="ui-monospace, monospace" font-style="normal" font-weight="normal" line-height="32.400000000000006px" dominant-baseline="mathematical" alignment-baseline="mathematical" stroke="none" stroke-width="2px" class="depgraph-fill">
+        <tspan alignment-baseline="mathematical" x="0px" y="12px">C5</tspan>
+      </text>
+    </g>
+  </g>
+  <g transform="matrix(1, 0, 0, 1, 1016.34, 329.02)" opacity="1">
+    <g>
+      <text font-size="24px" font-family="ui-monospace, monospace" font-style="normal" font-weight="normal" line-height="32.400000000000006px" dominant-baseline="mathematical" alignment-baseline="mathematical"  stroke-width="2px" class="depgraph-fill">
+        <tspan alignment-baseline="mathematical" x="0px" y="12px">C6</tspan>
+      </text>
+      <text font-size="24px" font-family="ui-monospace, monospace" font-style="normal" font-weight="normal" line-height="32.400000000000006px" dominant-baseline="mathematical" alignment-baseline="mathematical" stroke="none" stroke-width="2px" class="depgraph-fill">
+        <tspan alignment-baseline="mathematical" x="0px" y="12px">C6</tspan>
+      </text>
+    </g>
+  </g>
+  <g transform="matrix(1, 0, 0, 1, 1022.10, 477.79)" opacity="1">
+    <g>
+      <text font-size="24px" font-family="ui-monospace, monospace" font-style="normal" font-weight="normal" line-height="32.400000000000006px" dominant-baseline="mathematical" alignment-baseline="mathematical"  stroke-width="2px" class="depgraph-fill">
+        <tspan alignment-baseline="mathematical" x="0px" y="12px">C7</tspan>
+      </text>
+      <text font-size="24px" font-family="ui-monospace, monospace" font-style="normal" font-weight="normal" line-height="32.400000000000006px" dominant-baseline="mathematical" alignment-baseline="mathematical" stroke="none" stroke-width="2px" class="depgraph-fill">
+        <tspan alignment-baseline="mathematical" x="0px" y="12px">C7</tspan>
+      </text>
+    </g>
+  </g>
+  <g transform="matrix(1, 0, 0, 1, 1020.68, 615.81)" opacity="1">
+    <g>
+      <text font-size="24px" font-family="ui-monospace, monospace" font-style="normal" font-weight="normal" line-height="32.400000000000006px" dominant-baseline="mathematical" alignment-baseline="mathematical"  stroke-width="2px" class="depgraph-fill">
+        <tspan alignment-baseline="mathematical" x="0px" y="12px">C8</tspan>
+      </text>
+      <text font-size="24px" font-family="ui-monospace, monospace" font-style="normal" font-weight="normal" line-height="32.400000000000006px" dominant-baseline="mathematical" alignment-baseline="mathematical" stroke="none" stroke-width="2px" class="depgraph-fill">
+        <tspan alignment-baseline="mathematical" x="0px" y="12px">C8</tspan>
+      </text>
+    </g>
+  </g>
+  <g transform="matrix(1, 0, 0, 1, 481.44, 436.56)" opacity="1">
+    <g>
+      <text font-size="24px" font-family="ui-monospace, monospace" font-style="normal" font-weight="normal" line-height="32.400000000000006px" dominant-baseline="mathematical" alignment-baseline="mathematical"  stroke-width="2px" class="depgraph-fill">
+        <tspan alignment-baseline="mathematical" x="0px" y="12px">C1</tspan>
+      </text>
+      <text font-size="24px" font-family="ui-monospace, monospace" font-style="normal" font-weight="normal" line-height="32.400000000000006px" dominant-baseline="mathematical" alignment-baseline="mathematical" stroke="none" stroke-width="2px" class="depgraph-fill">
+        <tspan alignment-baseline="mathematical" x="0px" y="12px">C1</tspan>
+      </text>
+    </g>
+  </g>
+  <g transform="matrix(1, 0, 0, 1, 471.06, 588.92)" opacity="1">
+    <g>
+      <text font-size="24px" font-family="ui-monospace, monospace" font-style="normal" font-weight="normal" line-height="32.400000000000006px" dominant-baseline="mathematical" alignment-baseline="mathematical"  stroke-width="2px" class="depgraph-fill">
+        <tspan alignment-baseline="mathematical" x="0px" y="12px">C2</tspan>
+      </text>
+      <text font-size="24px" font-family="ui-monospace, monospace" font-style="normal" font-weight="normal" line-height="32.400000000000006px" dominant-baseline="mathematical" alignment-baseline="mathematical" stroke="none" stroke-width="2px" class="depgraph-fill">
+        <tspan alignment-baseline="mathematical" x="0px" y="12px">C2</tspan>
+      </text>
+    </g>
+  </g>
+</svg>
+
+</div>
+<h3 id="and-now-some-code">And Now, Some Code</h3>
+<p>Now we have a sense of how things should work, and we can start
+implementing the library.</p>
+<h4 id="graph-management">Graph Management</h4>
+<p>Notice that <code>Atom</code> and <code>Calc</code> share a lot of functionality around
+maintaining the dependency graph and propagating information through
+it. Let&#8217;s factor that functionality out into a base. We could call it
+&#8220;GraphNode&#8221;, but for the sake of style let&#8217;s call it <code>Reactor</code>.</p>
+<p>In addition to its graph management duties, a Reactor has a <code>latest</code>
+value, and &#8211; optionally &#8211; an <code>effect</code> which will run when its
+dependencies become fresh.</p>
+<p><small></p>
+<blockquote>
+<p><strong>A Note on Nomenclature</strong></p>
+<p>I use the terms &#8220;input&#8221; and &#8220;output&#8221; here instead of &#8220;dependency&#8221; and
+&#8220;dependent&#8221;, respectively. I find the latter tend to blur together on
+the page, while the former make things a bit more obvious and
+intuitive.</p>
+</blockquote>
+<p></small></p>
+<pre><code class="language-javascript">class Reactor {
+  static running = []
+
+  latest = undefined
+  effect = undefined
+
+  #staleInputs = 0
+  #inputs = new Set()
+  #outputs = new Set()
+
+  &#47;&#47; Informs the currently-running reactor that this
+  &#47;&#47; is one of its inputs. Returns the latest value.
+  observe() {
+    let running = Reactor.running.at(-1)
+    if (running) {
+      this.#outputs.add(running)
+      running.#inputs.add(this)
+    }
+    return this.latest
+  }
+
+  &#47;&#47; Records a stale input. If not already stale,
+  &#47;&#47; becomes stale and notifies its outputs.
+  stale() {
+    if (++this.#staleInputs == 1) {
+      for (const o of this.#outputs) { o.stale() }
+    }
+  }
+
+  &#47;&#47; Records a fresh input. If all are fresh,
+  &#47;&#47; runs effect (if any) and notifies outputs.
+  fresh() {
+    if (--this.#staleInputs == 0) {
+      this.effect?.()
+      for (const o of this.#outputs) { o.fresh() }
+    }
+  }
+
+  &#47;&#47; Executs `fn` and records its inputs.
+  track(fn) {
+    const oldInputs = this.#inputs
+    this.#inputs = new Set()
+    Reactor.running.push(this)
+    try {
+      return fn()
+    } finally {
+      Reactor.running.pop()
+      for (const i of oldInputs.difference(this.#inputs)) {
+        i.#outputs.delete(this)
+      }
+    }
+  }
+}
+</code></pre>
+<p>Implementing our API on top of <code>Reactor</code> is straightforward.</p>
+<h4 id="section-3"><code>Atom</code></h4>
+<p>An <code>Atom</code> is a <code>Reactor</code> that doesn&#8217;t have an effect. Notice that its
+<code>set</code> method is &#8211; precisely &#8211; steps 1-3 from <a href="#the-algorithm">the
+algorithm</a>.</p>
+<pre><code class="language-javascript">export function Atom(value) {
+  const r = new Reactor()
+  r.latest = value
+  const atom = () =&#62; r.observe()
+  atom.set = (newValue) =&#62; {
+    r.stale()
+    r.latest = newValue
+    r.fresh()
+  }
+  atom.peek = () =&#62; r.latest
+  return atom
+}
+</code></pre>
+<h4 id="section-4"><code>Calc</code></h4>
+<p>A <code>Calc</code> is a <code>Reactor</code> whose effect is to set the reactor&#8217;s <code>latest</code>
+value to the result of its calculation.</p>
+<pre><code class="language-javascript">export function Calc(fn) {
+  const r = new Reactor()
+  r.effect = () =&#62; r.latest = r.run(fn)
+  r.effect() &#47;&#47; calculate the initial value
+  const calc = () =&#62; r.observe()
+  calc.peek = () =&#62; r.latest
+  return calc
+}
+</code></pre>
+<h4 id="section-5"><code>Effect</code></h4>
+<p>An <code>Effect</code> is just a <code>Calc</code> that never has a value:</p>
+<pre><code class="language-javascript">export function Effect(action) {
+  return Calc(() =&#62; { action() })
+}
+</code></pre>
+<hr/>
+<h2 id="one-two-more-things"><del>One</del> Two More Thing<em>s</em>&#8230;</h2>
+<p>The library is fully functional, but there are a couple of gaps which
+I&#8217;ve omitted up til now for simplicity&#8217;s sake.</p>
+<h3 id="cancellation-disposal">Cancellation &#47; Disposal</h3>
+<p>How would we stop an <code>Effect</code> from running? Right now there&#8217;s no good
+way. Even if we try to have it garbage-collected<sup id="fnref9"><a href="#fn9" rel="footnote">9</a></sup>, it will
+keep effect-ing. Since dependencies keep a reference to their
+dependents, an <code>Effect</code> will stay it alive even if we try to destroy
+it. The same is true for <code>Atom</code> and <code>Calc</code> as well.</p>
+<p>We need a way to sever the edge between nodes in the graph. Let&#8217;s add
+the following method to the <code>Reactor</code> class definition:</p>
+<pre><code class="language-javascript">class Reactor {
+  &#47;&#47; ...
+
+  dispose() {
+    for (const i of this.#inputs) { i.#outputs.delete(this) }
+    for (const o of this.#outputs) { o.#inputs.delete(this) }
+    this.#inputs.clear()
+    this.#outputs.clear()
+  }
+}
+</code></pre>
+<p>and expose it on each of our API primitives:</p>
+<pre><code class="language-javascript">export function Atom(value) {
+  &#47;&#47; ...
+  atom.dispose = r.dispose.bind(r)
+  return atom
+}
+
+export function Calc(fn) {
+  &#47;&#47; ...
+  calc.dispose = r.dispose.bind(r)
+  return calc
+}
+
+&#47;&#47; `Effect` returns a `Calc`, so we don&#39;t need to change anything.
+</code></pre>
+<p>Now users of the library can &#8211; for example &#8211; cancel a logger, etc&#8230;</p>
+<pre><code class="language-javascript">let logger = Effect(() =&#62; console.log(myAtom()))
+setTimeout(() =&#62; { logger.dispose() }, 10_000)
+</code></pre>
+<h3 id="cycle-detection">Cycle Detection</h3>
+<p>We could end up in a situation where a <code>Calc</code> depdends on itself.</p>
+<details>
+<summary>Here's a simple example</summary>
+<pre><code class="language-javascript">let cycle = [Atom('-')]
+let clog = Effect(() => log(cycle[0]() + cycle[1]?.()))
+
+// On first execution, `cycle[1]` will be undefined.
+cycle[1] = Calc(() => cycle[0]() + cycle[1]?.())
+
+// But this will cause `cycle[1]` to run again
+// and this time it will refer to itself.
+cycle[0].set('x')
+</code></pre>
+</details>
+<p>A <a href="https://en.wikipedia.org/wiki/Cycle_(graph_theory)">cycle</a>!
+Fortunately in our implementation, a cycle does not cause an infinite
+loop. Instead, it causes stale data to be used (ie. a glitch).</p>
+<p>We can easily catch this, though it comes at a cost to
+performance<sup id="fnref10"><a href="#fn10" rel="footnote">10</a></sup>: whenever a <code>Reactor</code> is observed, if that
+same <code>Reactor</code> is present in the <code>Reactor.running</code> stack, then we have
+a cycle.</p>
+<p>Let&#8217;s add the following lines to <code>observe()</code>:</p>
+<pre><code class="language-javascript">observe() {
+  if (Reactor.running.includes(this)) {
+    throw new Error("Cycle detected")
+  }
+  &#47;&#47; ...
+}
+</code></pre>
+<hr/>
+<h2 id="optimizations">Optimizations</h2>
+<p>There are many optimizations we could make to improve speed and memory
+usage, but one in particular calls out to be addressed.</p>
+<h3 id="minimizing-recalculations">Minimizing Recalculations</h3>
+<p>If a <code>Calc</code> recalculates but produces the same value as before, all of
+its dependents will still recalculate, even though they don&#8217;t need
+to. It would be good to avoid them if possible, especially because we
+anticipate that the effects of some dependents (like UI rendering) will
+be expensive.</p>
+<p>To do this, we&#8217;ll need to pass some additional information along with
+the <code>fresh</code> notification, and add a bit of additional logic:</p>
+<pre><code class="language-javascript">class Reactor {
+  &#47;&#47; ...
+
+  &#47;&#47; Add a private property
+  #changedInputs = 0
+
+  &#47;&#47; ...
+
+  &#47;&#47; Add a parameter to fresh(), and a bit of additional logic
+  &#47;&#47; to avoid running the effect if no inputs have changed.
+  fresh(didChange) {
+    if (didChange) { ++this.#changedInputs }
+    if (--this.#staleInputs == 0) {
+      if ((this.effect != null) &#38;&#38; (this.#changedInputs &#62; 0)) {
+        let oldValue = this.latest
+        this.effect?.()
+        didChange = (this.latest != oldValue)
+        this.#changedInputs = 0
+      }
+      for (const o of this.#outputs) { o.fresh(didChange) }
+    }
+  }
+}
+</code></pre>
+<p>Now a <code>Reactor</code> will only run its effect if at least one of its inputs
+changed value<sup id="fnref11"><a href="#fn11" rel="footnote">11</a></sup>.</p>
+<hr/>
+<h2 id="conveniences">Conveniences</h2>
+<p>A pattern that will pop up often is transforming an <code>Atom</code>&#8217;s value:</p>
+<pre><code class="language-javascript">let myAtom = Atom(5)
+&#47;&#47; ...
+myAtom.set(myAtom.peek() * 2)
+</code></pre>
+<p>Let&#8217;s make this a bit easier by adding a method to <code>Atom</code>:</p>
+<pre><code class="language-javascript">function Atom(value) {
+  &#47;&#47; ...
+  atom.alter = (fn) =&#62; atom.set(fn(atom.peek()))
+  return atom
+}
+</code></pre>
+<hr/>
+<h2 id="naming">Naming</h2>
+<p>Oh, right &#8212; we forgot the most crucial thing. If we&#8217;re going to make
+a library, it has to have a clever name. Let&#8217;s see&#8230;</p>
+<ul>
+<li>It&#8217;s small. Micro, even. <code>µ</code> is too hard to type, so <strong><code>u</code></strong> then.</li>
+<li>It&#8217;s reactive, so it&#8217;s almost obligatory to use <strong><code>rx</code></strong> in the name.</li>
+<li>And of course, it&#8217;s Javascript isn&#8217;t it. Yes, we&#8217;ll have to <strong><code>.js</code></strong>.</li>
+</ul>
+<p><code>urx.js</code> &#8212; not bad.</p>
+<p>And it&#8217;s &#8230; <em>type&#8202;type&#8202;type</em> &#8230; available on GitHub, so
+&#8211; ✔ that&#8217;ll do.</p>
+<p>☞ &#160;<b class=semibold><a
+href="https://github.com/jrpat/urx.js"><a href="https://github.com/jrpat/urx.js">https:&#47;&#47;github.com&#47;jrpat&#47;urx.js</a></a></b>
+&#160;☜</p>
+<hr/>
+<h2 id="next-up">Next Up</h2>
+<p>In the next few posts in this series, we&#8217;ll use <code>urx.js</code> as a foundation
+on which to build:</p>
+<ul>
+<li>Larger-scale state management with nested stores that are
+automatically &#8220;react-ified&#8221;, with some additional ergonomics</li>
+<li>UI rendering using reactive state (and batch updates) to drive
+effecient DOM updates</li>
+</ul>
+<hr/>
+<h2 id="recommendations">Recommendations</h2>
+<p>If you liked this post, you might enjoy reading:</p>
+<ul>
+<li><a href="https://curtclifton.net/papers/MoseleyMarks06a.pdf">Out of the Tar Pit</a></li>
+<li><a href="https://www.microsoft.com/en-us/research/uploads/prod/2018/03/build-systems.pdf">Build Systems à la Carte</a></li>
+</ul>
+<br>
+<div class="footnotes">
+<hr/>
+<ol>
+
+<li id="fn1">
+<p>A &#8220;glitch&#8221; is reactive jargon for an inconsistency in
+derived state. <a class=raquo
+href="https://stackoverflow.com/a/25141234/166874">More Info</a>&#160;<a href="#fnref1" rev="footnote">&#8617;</a></p>
+</li>
+
+<li id="fn2">
+<p>The terminology comes from the classic <a href="https://curtclifton.net/papers/MoseleyMarks06a.pdf">Out of the Tar
+Pit</a> (Section 7.1.1), which further granularizes these
+types.&#160;<a href="#fnref2" rev="footnote">&#8617;</a></p>
+</li>
+
+<li id="fn3">
+<p>Is the mouse position input data? Or is it
+derived from a starting position and a list of every movement it has
+made since the program started? In theory, the latter. In practice,
+the former. Caching is another place where the line blurs. <a href="https://curtclifton.net/papers/MoseleyMarks06a.pdf">Out of
+the Tar Pit</a> has a pretty good treatment of this question in
+section 7.1.1&#160;<a href="#fnref3" rev="footnote">&#8617;</a></p>
+</li>
+
+<li id="fn4">
+<p>We could say that a <code>Calc</code> is just an <code>Effect</code>
+whose action is to recompute &#38; store its value.  Or is it the other
+way around? Maybe an <code>Effect</code> is just a <code>Calc</code> whose value is always
+<code>undefined</code>.
+Both are valid ways of looking at it, but in our implementation the
+latter is actually true.&#160;<a href="#fnref4" rev="footnote">&#8617;</a></p>
+</li>
+
+<li id="fn5">
+<p>If we have to manually specify dependencies, it&#8217;s easy
+to make mistakes. For any given <code>Calc</code>, we might &#8220;oversubscribe&#8221;
+(continue observing a fact that is no longer needed) or
+&#8220;undersubscribe&#8221; (forget to observe a fact, and thus don&#8217;t react
+when it changes).&#160;<a href="#fnref5" rev="footnote">&#8617;</a></p>
+</li>
+
+<li id="fn6">
+<p>At least, that&#8217;s all there is to it in
+single-threaded code. This becomes quite a bit more tricky if we&#8217;re
+in a multi-thread environment.&#160;<a href="#fnref6" rev="footnote">&#8617;</a></p>
+</li>
+
+<li id="fn7">
+<p>Since <code>Atom</code>s don&#8217;t depend on anything, no
+other <code>Atom</code> could possibly change.&#160;<a href="#fnref7" rev="footnote">&#8617;</a></p>
+</li>
+
+<li id="fn8">
+<p>The original idea for this algorithm comes from <a href="https://medium.com/hackernoon/becoming-fully-reactive-an-in-depth-explanation-of-mobservable-55995262a254#71b1">this post
+about MobX</a>. I&#8217;m sorry in advance for the color scheme 🤦&#160;<a href="#fnref8" rev="footnote">&#8617;</a></p>
+</li>
+
+<li id="fn9">
+<p>By &#8211; for example &#8211; creating it as a local variable in
+a function and then letting it go out of scope.&#160;<a href="#fnref9" rev="footnote">&#8617;</a></p>
+</li>
+
+<li id="fn10">
+<p>If we were to turn this into a production-ready library,
+we might want to provide a way to disable this check so it can
+helpfully catch bugs in development but not cost us anything in
+the shipped product.&#160;<a href="#fnref10" rev="footnote">&#8617;</a></p>
+</li>
+
+<li id="fn11">
+<p>We&#8217;ll use <code>===</code> equality, but it might make sense
+to use
+<a href="https://developer.mozilla.org/en-US/docs/Web/JavaScript/Equality_comparisons_and_sameness#same-value-zero_equality">same-value-zero</a>
+equality like many Javascript API&#8217;s (such as <code>Map</code> and <code>Set</code>) do.&#160;<a href="#fnref11" rev="footnote">&#8617;</a></p>
+</li>
+
+</ol>
+</div>
+</article>
+    </div>
+    <footer hbox=center>
+      <span><a href="https://github.com/jrpat">GitHub</a> (<small><a href="https://github.com/runningskull">Old GH</a></small>)</span>
+      <a href="https://linkedin.com/in/juanpatten">LinkedIn</a>
+    </footer>
+
+    <script src="/main.js"></script>
+    
+<script src="https://unpkg.com/@popperjs/core@2"></script>
+<script src="https://unpkg.com/tippy.js@6"></script>
+<script src="/highlight.min.js"></script>
+<script src="/blog/blog.js" type=module></script>
+<script>
+  hljs.highlightAll()
+</script>
+
+  </body>
+</html>
+
