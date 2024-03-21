@@ -674,7 +674,7 @@ class Reactor {
       if ((this.effect != null) && (this.#changedInputs > 0)) {
         let oldValue = this.latest
         this.effect?.()
-        didChange = (this.latest != oldValue)
+        didChange = (this.latest !== oldValue)
         this.#changedInputs = 0
       }
       for (const o of this.#outputs) { o.fresh(didChange) }

@@ -2433,7 +2433,7 @@ the <code>fresh</code> notification, and add a bit of additional logic:</p>
       if ((this.effect != null) &#38;&#38; (this.#changedInputs &#62; 0)) {
         let oldValue = this.latest
         this.effect?.()
-        didChange = (this.latest != oldValue)
+        didChange = (this.latest !== oldValue)
         this.#changedInputs = 0
       }
       for (const o of this.#outputs) { o.fresh(didChange) }
