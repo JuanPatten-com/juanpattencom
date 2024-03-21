@@ -535,7 +535,9 @@ export function Calc(fn) {
 
 #### `Effect`
 
-An `Effect` is just a `Calc` that never has a value:
+An `Effect` is just a `Reactor` that exists only for its effect. Instead
+of repeating code from `Calc`, we'll just return a `Calc` whose value is
+always `undefined`.
 
 ```javascript
 export function Effect(action) {
@@ -589,7 +591,8 @@ export function Calc(fn) {
   return calc
 }
 
-// `Effect` returns a `Calc`, so we don't need to change anything.
+// Effect returns a Calc, so we
+// don't need to change anything.
 ```
 
 
@@ -668,7 +671,7 @@ class Reactor {
 
   // Add a parameter to fresh(), and a bit of additional logic
   // to avoid running the effect if no inputs have changed.
-  fresh(didChange) {
+  fresh(didChange = true) {
     if (didChange) { ++this.#changedInputs }
     if (--this.#staleInputs == 0) {
       if ((this.effect != null) && (this.#changedInputs > 0)) {

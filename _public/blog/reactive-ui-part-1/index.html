@@ -2328,7 +2328,9 @@ value to the result of its calculation.</p>
 }
 </code></pre>
 <h4 id="section-5"><code>Effect</code></h4>
-<p>An <code>Effect</code> is just a <code>Calc</code> that never has a value:</p>
+<p>An <code>Effect</code> is just a <code>Reactor</code> that exists only for its effect. Instead
+of repeating code from <code>Calc</code>, we&#8217;ll just return a <code>Calc</code> whose value is
+always <code>undefined</code>.</p>
 <pre><code class="language-javascript">export function Effect(action) {
   return Calc(() =&#62; { action() })
 }
@@ -2369,7 +2371,8 @@ export function Calc(fn) {
   return calc
 }
 
-&#47;&#47; `Effect` returns a `Calc`, so we don&#39;t need to change anything.
+&#47;&#47; Effect returns a Calc, so we
+&#47;&#47; don&#39;t need to change anything.
 </code></pre>
 <p>Now users of the library can &#8211; for example &#8211; cancel a logger, etc&#8230;</p>
 <pre><code class="language-javascript">let logger = Effect(() =&#62; console.log(myAtom()))
@@ -2427,7 +2430,7 @@ the <code>fresh</code> notification, and add a bit of additional logic:</p>
 
   &#47;&#47; Add a parameter to fresh(), and a bit of additional logic
   &#47;&#47; to avoid running the effect if no inputs have changed.
-  fresh(didChange) {
+  fresh(didChange = true) {
     if (didChange) { ++this.#changedInputs }
     if (--this.#staleInputs == 0) {
       if ((this.effect != null) &#38;&#38; (this.#changedInputs &#62; 0)) {

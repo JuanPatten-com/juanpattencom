@@ -9,7 +9,7 @@ export function Atom(value) {
     if (newValue == r.latest) { return }
     r.stale()
     r.latest = newValue
-    r.fresh(true)
+    r.fresh()
   }
   atom.alter = (transform) => {
     atom.set(transform(r.latest))
@@ -71,7 +71,7 @@ export class Reactor {
 
   // Records a fresh input. If all are fresh,
   // runs effect (if any) and notifies outputs.
-  fresh(didChange) {
+  fresh(didChange = true) {
     if (didChange) { ++this.#changedInputs }
     if (--this.#staleInputs == 0) {
       if ((this.#changedInputs > 0) && (this.effect != null)) {
