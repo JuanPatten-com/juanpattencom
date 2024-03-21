@@ -740,7 +740,7 @@ Let's see...
 
 - It's small. Micro, even. `µ` is too hard to type, so **`u`** then.
 - It's reactive, so it's almost obligatory to use **`rx`** in the name.
-- And of course, it's Javascript isn't it. Yes, we'll have to **`.js`**.
+- And of course, it's Javascript isn't it? Yes, we'll have to **`.js`**.
 
 `urx.js` --- not bad.
 
