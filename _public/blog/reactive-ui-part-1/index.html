@@ -67,14 +67,14 @@
     <div class=pub-date>Published on Wednesday, March 20, 2024</div>
 </div>
 <p>Reactive dataflow libraries like <a href="https://docs.solidjs.com">Solid</a> and <a href="https://mobx.js.org/README.html">MobX</a> are
-a joy to use. They can feel like magic in the same way a spreadsheet
-feels like magic. Change one value and watch the effects ripple through
-the UI.</p>
+a joy<sup id="fnref1"><a href="#fn1" rel="footnote">1</a></sup> to use. They can feel like magic in the same way
+a spreadsheet feels like magic. Change one value and watch the effects
+ripple through the UI.</p>
 <p>The cool thing is that the concepts behind them are actually pretty
 simple! In this series of articles, I want to see if we can distill the
 reactive dataflow paradigm down to its essence, and implement it in
 a straightforward, readable way while still being correct
-(&#8220;glitch-free&#8221;<sup id="fnref1"><a href="#fn1" rel="footnote">1</a></sup> as they say) and performant enough to build
+(&#8220;glitch-free&#8221;<sup id="fnref2"><a href="#fn2" rel="footnote">2</a></sup> as they say) and performant enough to build
 real apps.</p>
 <p>We&#8217;ll start by building a simple and correct library, and then we&#8217;ll
 tackle some low-hanging optimization opportunities.</p>
@@ -105,12 +105,12 @@ full-screen</a> if you&#8217;d rather.</p>
 </ul>
 </blockquote>
 <h2 id="the-core-idea">The Core Idea</h2>
-<p>There are basically two types of data<sup id="fnref2"><a href="#fn2" rel="footnote">2</a></sup> in any system:</p>
+<p>There are basically two types of data<sup id="fnref3"><a href="#fn3" rel="footnote">3</a></sup> in any system:</p>
 <ul>
 <li><strong><em>Derived data</em></strong> which can be calculated from other data in the system.</li>
 <li><strong><em>Input data</em></strong> which cannot. We have to read&#47;store this data.</li>
 </ul>
-<p>The distinction between the two can be fuzzy<sup id="fnref3"><a href="#fn3" rel="footnote">3</a></sup> in
+<p>The distinction between the two can be fuzzy<sup id="fnref4"><a href="#fn4" rel="footnote">4</a></sup> in
 theory, but in practice it&#8217;s a useful distinction to guide how we design
 our data and shared state.</p>
 <p>If that makes intuitive sense, feel free to skip the following examples.</p>
@@ -226,7 +226,7 @@ observed facts change:</p>
 </code></pre>
 <blockquote>
 <p>Is a <code>Calc</code> just a special case of an <code>Effect</code>? Kind
-of.<sup id="fnref4"><a href="#fn4" rel="footnote">4</a></sup></p>
+of.<sup id="fnref5"><a href="#fn5" rel="footnote">5</a></sup></p>
 </blockquote>
 <hr/>
 <h2 id="usage-example">Usage Example</h2>
@@ -261,11 +261,11 @@ after(1000, () => {
 </details>
 <details>
 <summary>Example Console Output</summary>
-<pre>The name's Bond. James Bond.
+<pre><code class="language-text">The name's Bond. James Bond.
 The name's Oliver. Mary Oliver.
 The name's still Oliver. Mary Oliver.
 The name's still Oliver? Mary Oliver?
-Wait… is my name Oliver? Mary Oliver?</pre>
+Wait… is my name Oliver? Mary Oliver?</code></pre>
 </details>
 <hr/>
 <h2 id="library-implementation">Library Implementation</h2>
@@ -274,7 +274,7 @@ implementation. There are two main procedures to get our head around.</p>
 <h3 id="automatic-dependencies">Automatic Dependencies</h3>
 <p>Part of the &#8220;magic&#8221; feeling of a reactive framework is that it we never
 have to explicitly specify dependencies. The system figures them out for
-us. This is not only convenient, but important.<sup id="fnref5"><a href="#fn5" rel="footnote">5</a></sup></p>
+us. This is not only convenient, but important.<sup id="fnref6"><a href="#fn6" rel="footnote">6</a></sup></p>
 <p>And it&#8217;s surprisingly simple:</p>
 <ul>
 <li>We keep a stack of currently-running &#8220;observers&#8221; (ie. <code>Calc</code>
@@ -285,17 +285,17 @@ the stack. When it finishes, it pops itself off.</li>
 see if there is a currently running observer. If so, it registers
 itself as a dependency of that observer.</li>
 </ul>
-<p>That&#8217;s all there is to it.<sup id="fnref6"><a href="#fn6" rel="footnote">6</a></sup></p>
+<p>That&#8217;s all there is to it.<sup id="fnref7"><a href="#fn7" rel="footnote">7</a></sup></p>
 <h3 id="reacting-to-changes">Reacting to Changes</h3>
 <p>Every time an <code>Atom</code> is updated, we need to figure out two things:</p>
 <ol>
-<li>Every <code>Calc</code><sup id="fnref7"><a href="#fn7" rel="footnote">7</a></sup> that could possibly change
+<li>Every <code>Calc</code><sup id="fnref8"><a href="#fn8" rel="footnote">8</a></sup> that could possibly change
 based on the <code>Atom</code>&#8217;s new value. We&#8217;ll call these <strong><em>stale</em></strong>.</li>
 <li>The order in which to recalculate affected <code>Calc</code>s. A <code>Calc</code> can
 recalculate if and only if <em>all</em> of its dependencies are <strong><em>fresh</em></strong>
 (ie. not stale).</li>
 </ol>
-<h4 id="the-algorithm">The Algorithm<sup id="fnref8"><a href="#fn8" rel="footnote">8</a></sup></h4>
+<h4 id="the-algorithm">The Algorithm<sup id="fnref9"><a href="#fn9" rel="footnote">9</a></sup></h4>
 <p>Imagine a dependency graph that looks like this:</p>
 <div class="frame75 pin-to-above">
 <?xml version="1.0"?>
@@ -2339,7 +2339,7 @@ value to the result of its calculation.</p>
 I&#8217;ve omitted up til now for simplicity&#8217;s sake.</p>
 <h3 id="cancellation-disposal">Cancellation &#47; Disposal</h3>
 <p>How would we stop an <code>Effect</code> from running? Right now there&#8217;s no good
-way. Even if we try to have it garbage-collected<sup id="fnref9"><a href="#fn9" rel="footnote">9</a></sup>, it will
+way. Even if we try to have it garbage-collected<sup id="fnref10"><a href="#fn10" rel="footnote">10</a></sup>, it will
 keep effect-ing. Since dependencies keep a reference to their
 dependents, an <code>Effect</code> will stay it alive even if we try to destroy
 it. The same is true for <code>Atom</code> and <code>Calc</code> as well.</p>
@@ -2394,7 +2394,7 @@ cycle[0].set('x')
 Fortunately in our implementation, a cycle does not cause an infinite
 loop. Instead, it causes stale data to be used (ie. a glitch).</p>
 <p>We can easily catch this, though it comes at a cost to
-performance<sup id="fnref10"><a href="#fn10" rel="footnote">10</a></sup>: whenever a <code>Reactor</code> is observed, if that
+performance<sup id="fnref11"><a href="#fn11" rel="footnote">11</a></sup>: whenever a <code>Reactor</code> is observed, if that
 same <code>Reactor</code> is present in the <code>Reactor.running</code> stack, then we have
 a cycle.</p>
 <p>Let&#8217;s add the following lines to <code>observe()</code>:</p>
@@ -2442,7 +2442,7 @@ the <code>fresh</code> notification, and add a bit of additional logic:</p>
 }
 </code></pre>
 <p>Now a <code>Reactor</code> will only run its effect if at least one of its inputs
-changed value<sup id="fnref11"><a href="#fn11" rel="footnote">11</a></sup>.</p>
+changed value<sup id="fnref12"><a href="#fn12" rel="footnote">12</a></sup>.</p>
 <hr/>
 <h2 id="conveniences">Conveniences</h2>
 <p>A pattern that will pop up often is transforming an <code>Atom</code>&#8217;s value:</p>
@@ -2495,76 +2495,85 @@ effecient DOM updates</li>
 <ol>
 
 <li id="fn1">
-<p>A &#8220;glitch&#8221; is reactive jargon for an inconsistency in
-derived state. <a class=raquo
-href="https://stackoverflow.com/a/25141234/166874">More Info</a>&#160;<a href="#fnref1" rev="footnote">&#8617;</a></p>
+<p>Making UI development <em>fun</em> is important. If we want to build
+enjoyable things, we should enjoy working on them.<br><br>That&#8217;s been
+a driving force behind many of the frameworks I&#8217;ve developed over the
+years. We even made it a central, explicit goal in the one I developed
+for my old company (closed-source, but I dug up the <a href="https://gist.github.com/jrpat/2baafceff655b209a3432a57c8069f3c">original
+README</a> recently) &#160;<a href="#fnref1" rev="footnote">&#8617;</a></p>
 </li>
 
 <li id="fn2">
-<p>The terminology comes from the classic <a href="https://curtclifton.net/papers/MoseleyMarks06a.pdf">Out of the Tar
-Pit</a> (Section 7.1.1), which further granularizes these
-types.&#160;<a href="#fnref2" rev="footnote">&#8617;</a></p>
+<p>A &#8220;glitch&#8221; is reactive jargon for an inconsistency in
+derived state. <a class=raquo
+href="https://stackoverflow.com/a/25141234/166874">More Info</a>&#160;<a href="#fnref2" rev="footnote">&#8617;</a></p>
 </li>
 
 <li id="fn3">
+<p>The terminology comes from the classic <a href="https://curtclifton.net/papers/MoseleyMarks06a.pdf">Out of the Tar
+Pit</a> (Section 7.1.1), which further granularizes these
+types.&#160;<a href="#fnref3" rev="footnote">&#8617;</a></p>
+</li>
+
+<li id="fn4">
 <p>Is the mouse position input data? Or is it
 derived from a starting position and a list of every movement it has
 made since the program started? In theory, the latter. In practice,
 the former. Caching is another place where the line blurs. <a href="https://curtclifton.net/papers/MoseleyMarks06a.pdf">Out of
 the Tar Pit</a> has a pretty good treatment of this question in
-section 7.1.1&#160;<a href="#fnref3" rev="footnote">&#8617;</a></p>
+section 7.1.1&#160;<a href="#fnref4" rev="footnote">&#8617;</a></p>
 </li>
 
-<li id="fn4">
+<li id="fn5">
 <p>We could say that a <code>Calc</code> is just an <code>Effect</code>
 whose action is to recompute &#38; store its value.  Or is it the other
 way around? Maybe an <code>Effect</code> is just a <code>Calc</code> whose value is always
 <code>undefined</code>.
 Both are valid ways of looking at it, but in our implementation the
-latter is actually true.&#160;<a href="#fnref4" rev="footnote">&#8617;</a></p>
+latter is actually true.&#160;<a href="#fnref5" rev="footnote">&#8617;</a></p>
 </li>
 
-<li id="fn5">
+<li id="fn6">
 <p>If we have to manually specify dependencies, it&#8217;s easy
 to make mistakes. For any given <code>Calc</code>, we might &#8220;oversubscribe&#8221;
 (continue observing a fact that is no longer needed) or
 &#8220;undersubscribe&#8221; (forget to observe a fact, and thus don&#8217;t react
-when it changes).&#160;<a href="#fnref5" rev="footnote">&#8617;</a></p>
-</li>
-
-<li id="fn6">
-<p>At least, that&#8217;s all there is to it in
-single-threaded code. This becomes quite a bit more tricky if we&#8217;re
-in a multi-thread environment.&#160;<a href="#fnref6" rev="footnote">&#8617;</a></p>
+when it changes).&#160;<a href="#fnref6" rev="footnote">&#8617;</a></p>
 </li>
 
 <li id="fn7">
-<p>Since <code>Atom</code>s don&#8217;t depend on anything, no
-other <code>Atom</code> could possibly change.&#160;<a href="#fnref7" rev="footnote">&#8617;</a></p>
+<p>At least, that&#8217;s all there is to it in
+single-threaded code. This becomes quite a bit more tricky if we&#8217;re
+in a multi-thread environment.&#160;<a href="#fnref7" rev="footnote">&#8617;</a></p>
 </li>
 
 <li id="fn8">
-<p>The original idea for this algorithm comes from <a href="https://medium.com/hackernoon/becoming-fully-reactive-an-in-depth-explanation-of-mobservable-55995262a254#71b1">this post
-about MobX</a>. I&#8217;m sorry in advance for the color scheme 🤦&#160;<a href="#fnref8" rev="footnote">&#8617;</a></p>
+<p>Since <code>Atom</code>s don&#8217;t depend on anything, no
+other <code>Atom</code> could possibly change.&#160;<a href="#fnref8" rev="footnote">&#8617;</a></p>
 </li>
 
 <li id="fn9">
-<p>By &#8211; for example &#8211; creating it as a local variable in
-a function and then letting it go out of scope.&#160;<a href="#fnref9" rev="footnote">&#8617;</a></p>
+<p>The original idea for this algorithm comes from <a href="https://medium.com/hackernoon/becoming-fully-reactive-an-in-depth-explanation-of-mobservable-55995262a254#71b1">this post
+about MobX</a>. I&#8217;m sorry in advance for the color scheme 🤦&#160;<a href="#fnref9" rev="footnote">&#8617;</a></p>
 </li>
 
 <li id="fn10">
-<p>If we were to turn this into a production-ready library,
-we might want to provide a way to disable this check so it can
-helpfully catch bugs in development but not cost us anything in
-the shipped product.&#160;<a href="#fnref10" rev="footnote">&#8617;</a></p>
+<p>By &#8211; for example &#8211; creating it as a local variable in
+a function and then letting it go out of scope.&#160;<a href="#fnref10" rev="footnote">&#8617;</a></p>
 </li>
 
 <li id="fn11">
+<p>If we were to turn this into a production-ready library,
+we might want to provide a way to disable this check so it can
+helpfully catch bugs in development but not cost us anything in
+the shipped product.&#160;<a href="#fnref11" rev="footnote">&#8617;</a></p>
+</li>
+
+<li id="fn12">
 <p>We&#8217;ll use <code>===</code> equality, but it might make sense
 to use
 <a href="https://developer.mozilla.org/en-US/docs/Web/JavaScript/Equality_comparisons_and_sameness#same-value-zero_equality">same-value-zero</a>
-equality like many Javascript API&#8217;s (such as <code>Map</code> and <code>Set</code>) do.&#160;<a href="#fnref11" rev="footnote">&#8617;</a></p>
+equality like many Javascript API&#8217;s (such as <code>Map</code> and <code>Set</code>) do.&#160;<a href="#fnref12" rev="footnote">&#8617;</a></p>
 </li>
 
 </ol>

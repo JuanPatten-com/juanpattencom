@@ -59,9 +59,9 @@ $[set toc {
 </div>
 
 Reactive dataflow libraries like [Solid][solidjs] and [MobX][mobx] are
-a joy to use. They can feel like magic in the same way a spreadsheet
-feels like magic. Change one value and watch the effects ripple through
-the UI.
+a joy[^libui] to use. They can feel like magic in the same way
+a spreadsheet feels like magic. Change one value and watch the effects
+ripple through the UI.
 
 The cool thing is that the concepts behind them are actually pretty
 simple! In this series of articles, I want to see if we can distill the
@@ -307,11 +307,11 @@ after(1000, () => {
 
 <details>
 <summary>Example Console Output</summary>
-<pre>The name's Bond. James Bond.
+<pre><code class="language-text">The name's Bond. James Bond.
 The name's Oliver. Mary Oliver.
 The name's still Oliver. Mary Oliver.
 The name's still Oliver? Mary Oliver?
-Wait… is my name Oliver? Mary Oliver?</pre>
+Wait… is my name Oliver? Mary Oliver?</code></pre>
 </details>
 
 -----
@@ -752,6 +752,12 @@ If you liked this post, you might enjoy reading:
 <br>
 
 
+[^libui]: Making UI development *fun* is important. If we want to build
+  enjoyable things, we should enjoy working on them.<br><br>That's been
+  a driving force behind many of the frameworks I've developed over the
+  years. We even made it a central, explicit goal in the one I developed
+  for my old company (closed-source, but I dug up the [original
+  README][libui] recently) 
 
 [^tarpit]: The terminology comes from the classic [Out of the Tar
     Pit][tarpit] (Section 7.1.1), which further granularizes these
@@ -812,3 +818,4 @@ If you liked this post, you might enjoy reading:
 [solidjs]: https://docs.solidjs.com
 [mobx]: https://mobx.js.org/README.html
 [mobx-algo]: https://medium.com/hackernoon/becoming-fully-reactive-an-in-depth-explanation-of-mobservable-55995262a254#71b1
+[libui]: https://gist.github.com/jrpat/2baafceff655b209a3432a57c8069f3c
