@@ -699,6 +699,19 @@ class Reactor {
 }
 ```
 
+And let's add a check at the beginning of `Atom`'s `set` method:
+
+```javascript
+export function Atom(value) {
+  // ...
+  atom.set = (newValue) => {
+    if (newValue === r.latest) { return }
+    // ...
+  }
+  // ...
+}
+```
+
 Now a `Reactor` will only run its effect if at least one of its inputs
 changed value[^identity-equality].
 

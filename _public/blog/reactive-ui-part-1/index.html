@@ -2763,6 +2763,16 @@ the <code>fresh</code> notification, and add a bit of additional logic:</p>
   }
 }
 </code></pre>
+<p>And let&#8217;s add a check at the beginning of <code>Atom</code>&#8217;s <code>set</code> method:</p>
+<pre><code class="language-javascript">export function Atom(value) {
+  &#47;&#47; ...
+  atom.set = (newValue) =&#62; {
+    if (newValue === r.latest) { return }
+    &#47;&#47; ...
+  }
+  &#47;&#47; ...
+}
+</code></pre>
 <p>Now a <code>Reactor</code> will only run its effect if at least one of its inputs
 changed value<sup id="fnref12"><a href="#fn12" rel="footnote">12</a></sup>.</p>
 <hr/>

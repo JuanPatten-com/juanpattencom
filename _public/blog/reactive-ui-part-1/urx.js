@@ -6,7 +6,7 @@ export function Atom(value) {
   r.latest = value
   const atom = () => r.observe()
   atom.set = (newValue) => {
-    if (newValue == r.latest) { return }
+    if (newValue === r.latest) { return }
     r.stale()
     r.latest = newValue
     r.fresh()
