@@ -78,7 +78,7 @@ tackle some low-hanging optimization opportunities.
 Here's a demo of what we'll be able to make at the end of the
 article. Everything is vanilla javascript, and the only library used is
 the one we're about to build. You can [view it
-full-screen](./sheet.html) if you'd rather.
+full-screen](/blog/reactive-ui-part-1/sheet.html) if you'd rather.
 
 <iframe id=sheet-preview src="/blog/reactive-ui-part-1/sheet.html"></iframe>
 
@@ -754,8 +754,8 @@ href="https://github.com/jrpat/urx.js">https://github.com/jrpat/urx.js</a></b>
 
 OK, that's all for this installment. We've got a usable, glitch-free,
 performant reactive dataflow library. We can use it to build real apps,
-like the [spreadsheet demo](./sheet.html) from the beginning of the
-article.
+like the [spreadsheet demo](/blog/reactive-ui-part-1/sheet.html) from
+the beginning of the article.
 
 But as you build with it, you'll quickly realize that it still leaves
 a lot to be desired: it's not easy to combine `Atom`s into nested
@@ -764,7 +764,8 @@ values are lists, for another.
 
 And we have all this derived state, but no way to declaratively code our
 UI, so we end up doing a lot of manual DOM manipulation (check out the
-[code for the spreadsheet demo](./sheet.js) for example).
+[code for the spreadsheet demo](/blog/reactive-ui-part-1/sheet.js) for
+example).
 
 We'll address all those and more in due time.
 
