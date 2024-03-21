@@ -185,7 +185,7 @@ I'll use the following terms throughout:
   re-calculate.
 - If `Child` observes `Parent`, then:
     - `Parent` is a __*dependency*__ of `Child`.
-    - `Child` is a __*dependent*__ of `Parent`
+    - `Child` is a __*dependent*__ of `Parent`.
 - The web of facts observing other facts forms a __*[dependency
   graph](https://en.wikipedia.org/wiki/Dependency_graph)*__.
 
