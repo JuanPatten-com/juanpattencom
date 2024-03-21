@@ -732,7 +732,7 @@ in real-world applications.
 
 ## That's It
 
-That's it for the first article in the seri--- *wait* --- we forgot the
+That's it for the first article in the seri--- *wait!* ---we forgot the
 most crucial thing! If we're going to make a library, it has to have
 a clever name 😉
 
