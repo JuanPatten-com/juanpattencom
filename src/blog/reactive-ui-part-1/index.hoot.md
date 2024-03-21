@@ -618,7 +618,6 @@ We could end up in a situation where a `Calc` depdends on itself.
 <details>
 <summary>Here's a simple example</summary>
 <pre><code class="language-javascript">let cycle = [Atom('-')]
-let clog = Effect(() => log(cycle[0]() + cycle[1]?.()))
 
 // On first execution, `cycle[1]` will be undefined.
 cycle[1] = Calc(() => cycle[0]() + cycle[1]?.())
