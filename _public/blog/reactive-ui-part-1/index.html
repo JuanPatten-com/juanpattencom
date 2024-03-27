@@ -89,11 +89,10 @@ full-screen</a> if you&#8217;d rather.</p>
 <ul>
   <li>Cell formulas are just Javascript expressions.</li>
   <li>Inside a cell's formula, you can refer to other cells by name, ie
-  <tt>a4</tt>. While editing, clicking another cell will insert its
-  name.
+  <tt>a4</tt>.
   </li>
-  <li>Press <tt>Enter</tt> or <tt>Tab</tt> to finish editing a cell.
-  </li>
+  <li>To finish editing a cell, press <tt>Enter</tt> or <tt>Tab</tt> or
+  click out of it.</li>
   <li><tt>Math</tt> functions are exposed directly. Do
   <tt>abs(a4)</tt>, not <del><tt>Math.abs(a4)</tt></del>.
   </li>
@@ -277,13 +276,14 @@ have to explicitly specify dependencies. The system figures them out for
 us. This is not only convenient, but important.<sup id="fnref6"><a href="#fn6" rel="footnote">6</a></sup></p>
 <p>And it&#8217;s surprisingly simple:</p>
 <ul>
-<li>We keep a stack of currently-running &#8220;observers&#8221; (ie. <code>Calc</code>
+<li>We keep track of the currently-running &#8220;observer&#8221; (ie. <code>Calc</code>
 &#38; <code>Effect</code>).</li>
-<li>When a <code>Calc</code> or <code>Effect</code> begins to execute, it pushes itself onto
-the stack. When it finishes, it pops itself off.</li>
-<li>Any time a fact&#8217;s value is read, it looks on the top of the stack to
-see if there is a currently running observer. If so, it registers
-itself as a dependency of that observer.</li>
+<li>When a <code>Calc</code> or <code>Effect</code> executes, it sets the
+currently-running observer to itself, and restores the previously
+running observer when it finishes.</li>
+<li>Any time a fact&#8217;s value is read, it looks to see if there is
+a currently running observer. If so, it registers itself as
+a dependency of that observer.</li>
 </ul>
 <p>That&#8217;s all there is to it.<sup id="fnref7"><a href="#fn7" rel="footnote">7</a></sup></p>
 <h3 id="reacting-to-changes">Reacting to Changes</h3>
@@ -2563,7 +2563,7 @@ intuitive.</p>
 </blockquote>
 <p></small></p>
 <pre><code class="language-javascript">class Reactor {
-  static running = []
+  static running = null
 
   latest = undefined
   effect = undefined
@@ -2575,7 +2575,7 @@ intuitive.</p>
   &#47;&#47; Informs the currently-running reactor that this
   &#47;&#47; is one of its inputs. Returns the latest value.
   observe() {
-    let running = Reactor.running.at(-1)
+    let running = Reactor.running
     if (running) {
       this.#outputs.add(running)
       running.#inputs.add(this)
@@ -2603,12 +2603,13 @@ intuitive.</p>
   &#47;&#47; Executs `fn` and records its inputs.
   track(fn) {
     const oldInputs = this.#inputs
+    const oldRunning = Reactor.running
     this.#inputs = new Set()
-    Reactor.running.push(this)
+    Reactor.running = this
     try {
       return fn()
     } finally {
-      Reactor.running.pop()
+      Reactor.running = oldRunning
       for (const i of oldInputs.difference(this.#inputs)) {
         i.#outputs.delete(this)
       }

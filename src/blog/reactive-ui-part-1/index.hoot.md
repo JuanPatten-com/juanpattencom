@@ -87,11 +87,10 @@ full-screen](/blog/reactive-ui-part-1/sheet.html) if you'd rather.
 <ul>
   <li>Cell formulas are just Javascript expressions.</li>
   <li>Inside a cell's formula, you can refer to other cells by name, ie
-  <tt>a4</tt>. While editing, clicking another cell will insert its
-  name.
+  <tt>a4</tt>.
   </li>
-  <li>Press <tt>Enter</tt> or <tt>Tab</tt> to finish editing a cell.
-  </li>
+  <li>To finish editing a cell, press <tt>Enter</tt> or <tt>Tab</tt> or
+  click out of it.</li>
   <li><tt>Math</tt> functions are exposed directly. Do
   <tt>abs(a4)</tt>, not <del><tt>Math.abs(a4)</tt></del>.
   </li>
@@ -329,13 +328,14 @@ us. This is not only convenient, but important.[^manual-deps]
 
 And it's surprisingly simple:
 
-- We keep a stack of currently-running "observers" (ie. `Calc`
+- We keep track of the currently-running "observer" (ie. `Calc`
   & `Effect`).
-- When a `Calc` or `Effect` begins to execute, it pushes itself onto
-  the stack. When it finishes, it pops itself off.
-- Any time a fact's value is read, it looks on the top of the stack to
-  see if there is a currently running observer. If so, it registers
-  itself as a dependency of that observer.
+- When a `Calc` or `Effect` executes, it sets the
+  currently-running observer to itself, and restores the previously
+  running observer when it finishes.
+- Any time a fact's value is read, it looks to see if there is
+  a currently running observer. If so, it registers itself as
+  a dependency of that observer.
 
 That's all there is to it.[^auto-deps-threading]
 
@@ -452,7 +452,7 @@ dependencies become fresh.
 
 ```javascript
 class Reactor {
-  static running = []
+  static running = null
 
   latest = undefined
   effect = undefined
@@ -464,7 +464,7 @@ class Reactor {
   // Informs the currently-running reactor that this
   // is one of its inputs. Returns the latest value.
   observe() {
-    let running = Reactor.running.at(-1)
+    let running = Reactor.running
     if (running) {
       this.#outputs.add(running)
       running.#inputs.add(this)
@@ -492,12 +492,13 @@ class Reactor {
   // Executs `fn` and records its inputs.
   track(fn) {
     const oldInputs = this.#inputs
+    const oldRunning = Reactor.running
     this.#inputs = new Set()
-    Reactor.running.push(this)
+    Reactor.running = this
     try {
       return fn()
     } finally {
-      Reactor.running.pop()
+      Reactor.running = oldRunning
       for (const i of oldInputs.difference(this.#inputs)) {
         i.#outputs.delete(this)
       }

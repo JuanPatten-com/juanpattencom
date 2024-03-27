@@ -40,7 +40,7 @@ export function Effect(action) {
 // Implementation
 
 export class Reactor {
-  static running = []
+  static running = null
 
   latest = undefined
   effect = undefined
@@ -53,7 +53,7 @@ export class Reactor {
   // Informs the currently-running reactor that this
   // is one of its inputs. Returns the latest value.
   observe() {
-    let running = Reactor.running.at(-1)
+    let running = Reactor.running
     if (running) {
       this.#outputs.add(running)
       running.#inputs.add(this)
@@ -87,12 +87,13 @@ export class Reactor {
   // Executs `fn` and records its inputs.
   track(fn) {
     const oldInputs = this.#inputs
+    const oldRunning = Reactor.running
     this.#inputs = new Set()
-    Reactor.running.push(this)
+    Reactor.running = this
     try {
       return fn()
     } finally {
-      Reactor.running.pop()
+      Reactor.running = oldRunning
       for (const i of oldInputs.difference(this.#inputs)) {
         i.#outputs.delete(this)
       }

@@ -101,22 +101,7 @@ window.initSheet = function() {
         isEditing.set(false)
       }
       cell.addEventListener('click', e => {
-        if (isEditing.peek()) { return }
         cell.edit()
-      })
-      cell.addEventListener('mousedown', e => {
-        closeSidebar()
-        if (isEditing.peek()) {
-          e.preventDefault()
-          e.stopPropagation()
-          let selIdx = selectedIndex.peek()
-          if (selIdx == index) { return }
-          let selected = env[selIdx]
-          if (selected) {
-            document.execCommand('insertText', false, index)
-          }
-          return false
-        }
       })
 
       // Input DOM setup
