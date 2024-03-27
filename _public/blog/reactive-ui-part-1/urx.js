@@ -84,7 +84,7 @@ export class Reactor {
     }
   }
 
-  // Executs `fn` and records its inputs.
+  // Executes `fn` and records its inputs.
   track(fn) {
     const oldInputs = this.#inputs
     const oldRunning = Reactor.running
