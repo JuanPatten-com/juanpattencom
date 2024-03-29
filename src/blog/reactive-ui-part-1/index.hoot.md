@@ -45,7 +45,7 @@ $[set toc {
   {"The Library" the-library} {
     {"Atom" atom} {}
     {"Calc" calc} {}
-    {"Effect" effect} {}
+{"Effect" effect} {}
   }
   {"The Algorithm" the-algorithm}
 }]
@@ -297,10 +297,10 @@ fullName.set('Mary Oliver')
 
 intro.set(intro.peek() + ' still')
 
-after(1000, () => {
+setTimeout(() => {
   punct.set('?')
   intro.set('Wait… is my name')
-})
+}, 1000)
 </code></pre>
 </details>
 
@@ -328,14 +328,11 @@ us. This is not only convenient, but important.[^manual-deps]
 
 And it's surprisingly simple:
 
-- We keep track of the currently-running "observer" (ie. `Calc`
-  & `Effect`).
-- When a `Calc` or `Effect` executes, it sets the
-  currently-running observer to itself, and restores the previously
-  running observer when it finishes.
-- Any time a fact's value is read, it looks to see if there is
-  a currently running observer. If so, it registers itself as
-  a dependency of that observer.
+- We keep track of the active "observer" (ie. `calc` & `effect`).
+- When a `Calc` or `Effect` executes, it sets the active observer to
+  itself, and restores the previously active observer when it finishes.
+- Any time a fact's value is read, it looks to see if there is an active
+  observer. If so, it registers itself as a dependency of that observer.
 
 That's all there is to it.[^auto-deps-threading]
 
@@ -452,22 +449,22 @@ dependencies become fresh.
 
 ```javascript
 class Reactor {
-  static running = null
+  static active = null
 
   latest = undefined
   effect = undefined
 
-  #staleInputs = 0
-  #inputs = new Set()
-  #outputs = new Set()
+  _staleInputs = 0
+  _inputs = new Set()
+  _outputs = new Set()
 
   // Informs the currently-running reactor that this
   // is one of its inputs. Returns the latest value.
   observe() {
     let running = Reactor.running
     if (running) {
-      this.#outputs.add(running)
-      running.#inputs.add(this)
+      this._outputs.add(running)
+      running._inputs.add(this)
     }
     return this.latest
   }
@@ -475,32 +472,32 @@ class Reactor {
   // Records a stale input. If not already stale,
   // becomes stale and notifies its outputs.
   stale() {
-    if (++this.#staleInputs == 1) {
-      for (const o of this.#outputs) { o.stale() }
+    if (++this._staleInputs == 1) {
+      for (const o of this._outputs) { o.stale() }
     }
   }
 
   // Records a fresh input. If all are fresh,
   // runs effect (if any) and notifies outputs.
   fresh() {
-    if (--this.#staleInputs == 0) {
+    if (--this._staleInputs == 0) {
       this.effect?.()
-      for (const o of this.#outputs) { o.fresh() }
+      for (const o of this._outputs) { o.fresh() }
     }
   }
 
   // Executes `fn` and records its inputs.
   track(fn) {
-    const oldInputs = this.#inputs
+    const oldInputs = this._inputs
     const oldRunning = Reactor.running
-    this.#inputs = new Set()
+    this._inputs = new Set()
     Reactor.running = this
     try {
       return fn()
     } finally {
       Reactor.running = oldRunning
-      for (const i of oldInputs.difference(this.#inputs)) {
-        i.#outputs.delete(this)
+      for (const i of oldInputs.difference(this._inputs)) {
+        i._outputs.delete(this)
       }
     }
   }
@@ -621,40 +618,48 @@ setTimeout(() => { logger.dispose() }, 10_000)
 
 ### Cycle Detection
 
-We could end up in a situation where a `Calc` depdends on itself.
-
-<details>
-<summary>Here's a simple example</summary>
-<pre><code class="language-javascript">let cycle = [Atom('-')]
-
-// On first execution, `cycle[1]` will be undefined.
-cycle[1] = Calc(() => cycle[0]() + cycle[1]?.())
-
-// But this will cause `cycle[1]` to run again
-// and this time it will refer to itself.
-cycle[0].set('x')
-</code></pre>
-</details>
-
-A [cycle](https://en.wikipedia.org/wiki/Cycle_(graph_theory))!
-Fortunately in our implementation, a cycle does not cause an infinite
-loop. Instead, it causes stale data to be used (ie. a glitch).
-
-We can easily catch this, though it comes at a cost to
-performance[^prod-config]: whenever a `Reactor` is observed, if that
-same `Reactor` is present in the `Reactor.running` stack, then we have
-a cycle.
-
-Let's add the following lines to `observe()`:
+A `Calc` could end up depdending on itself, forming
+a [cycle](https://en.wikipedia.org/wiki/Cycle_(graph_theory)) in the
+dependency graph. For example:
 
 ```javascript
-observe() {
-  if (Reactor.running.includes(this)) {
-    throw new Error("Cycle detected")
-  }
+let cycle = [Atom('')]
+
+// On first execution, cycle[1] will be undefined.
+cycle[1] = Calc(() => cycle[0]() + cycle[1]?.())
+
+// But this will cause cycle[1] to run again
+// and this time it will refer to itself.
+cycle[0].set('!')
+```
+
+In this example, the `Calc` *directly* depends on itself. We can detect
+this easily. Let's add a check:
+
+```javascript
+class Reactor {
   // ...
+  observe() {
+    if (Reactor.active == this) {
+      throw Error('Cycle detected')
+    }
+  }
 }
 ```
+
+A `Calc` directly depending on itself is a bit contrived, and fairly
+unlikely in real-world cases. It's much more likely that a cycle would
+arise when a `Calc` *indirectly* depends on itself, eg.
+`A`&#x200a;→&#x200a;`B`&#x200a;→&#x200a;`C`&#x200a;→&#x200a;`D`&#x200a;→&#x200a;`A`.
+
+The check for this case is a bit less obvious. Remember back to [the
+algorithm](#the-algorithm): a `Calc` only recalculates once all its
+dependencies are fresh. At least, this is the case in an acyclic
+graph. However, let's look at an indirect cycle:
+
+<div class="frame75 pin-to-above">
+  $[contentsOf ./cycle-step1.svg]
+</div>
 
 -----
 
@@ -679,22 +684,22 @@ class Reactor {
   // ...
 
   // Add a private property
-  #changedInputs = 0
+  #inputChanged = false
 
   // ...
 
   // Add a parameter to fresh(), and a bit of additional logic
   // to avoid running the effect if no inputs have changed.
-  fresh(didChange = true) {
-    if (didChange) { ++this.#changedInputs }
+  fresh(changed = true) {
+    if (changed) { this.#inputChanged = true }
     if (--this.#staleInputs == 0) {
-      if ((this.effect != null) && (this.#changedInputs > 0)) {
+      if (this.#inputChanged && (this.effect != null)) {
+        this.#inputChanged = false // reset for next time
         let oldValue = this.latest
-        this.effect?.()
-        didChange = (this.latest !== oldValue)
-        this.#changedInputs = 0
+        this.effect()
+        changed = (this.latest !== oldValue)
       }
-      for (const o of this.#outputs) { o.fresh(didChange) }
+      for (const o of this.#outputs) { o.fresh(changed) }
     }
   }
 }
@@ -868,11 +873,6 @@ Thanks for reading! See you next time.
 [^auto-deps-threading]: At least, that's all there is to it in
     single-threaded code. This becomes quite a bit more tricky if we're
     in a multithreaded environment.
-
-[^prod-config]: If we were to turn this into a production-ready library,
-    we might want to provide a way to disable this check so it can
-    helpfully catch bugs in development but not cost us anything in
-    the shipped product.
 
 [^identity-equality]: We use `===` equality, but it might make sense
     to use

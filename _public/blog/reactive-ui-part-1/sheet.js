@@ -10,9 +10,9 @@ window.initSheet = function() {
   //////////////////////////////////////////////////////////////////////
   // Shared State
 
-  let [rows, cols] = [Atom(10), Atom(10)]
-  let selectedIndex = Atom()
-  let isEditing = Atom(false)
+  let [rows, cols] = [Atom(10).label('rows'), Atom(10).label('cols')]
+  let selectedIndex = Atom().label('selectedIndex')
+  let isEditing = Atom(false).label('isEditing')
 
 
   //////////////////////////////////////////////////////////////////////
@@ -24,7 +24,9 @@ window.initSheet = function() {
     has(c, key) { return c[key] != null },
     get(c, key) { 
       let val = c[key], result = val?.result
-      return result ? result() : val
+      let ret = result ? result() : val
+      if (ret instanceof Error) { throw ret }
+      return ret
     }
   })
   function evalCell(code) { 
@@ -45,7 +47,7 @@ window.initSheet = function() {
   Effect(() => {
     table.classList.toggle('selected', selectedIndex() != null)
     table.classList.toggle('editing', isEditing())
-  })
+  }).label('fx:change-table-class')
 
 
   //////////////////////////////////////////////////////////////////////
@@ -64,8 +66,8 @@ window.initSheet = function() {
 
       // Cell reactive data
       env[index] = cell
-      cell.formula = Atom()
-      cell.result = Calc(() => evalCell(cell.formula()))
+      cell.formula = Atom().label(`${index}.formula`)
+      cell.result = Calc(() => evalCell(cell.formula())).label(`${index}.result`)
       Effect(() => {
         let isSelected = (selectedIndex() == index)
         cell.classList.toggle('selected', isSelected)
@@ -76,7 +78,7 @@ window.initSheet = function() {
         } else {
           output.innerText = cell.result()
         }
-      })
+      }).label('fx:update-cell-display')
 
       // Cell DOM setup
       cell.input = input
@@ -155,10 +157,10 @@ window.initSheet = function() {
   let colRule = dimSheet.cssRules[1]
   Effect(() => {
     rowRule.selectorText = `tr:nth-child(n+${rows()+1})`
-  })
+  }).label('fx:change-rows')
   Effect(() => {
     colRule.selectorText = `td:nth-child(n+${cols()+1})`
-  })
+  }).label('fx:change-cols')
 
   let menu = document.getElementById('menu')
   let rowSlider = menu.querySelector('[name="rows"]')
