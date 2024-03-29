@@ -176,6 +176,7 @@ article p code {
 
 article img.nostretch {
   width: auto;
+  max-width: 100%;
 }
 
 article .pin-to-above {
