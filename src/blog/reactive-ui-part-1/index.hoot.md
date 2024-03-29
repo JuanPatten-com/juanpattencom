@@ -318,7 +318,7 @@ Wait… is my name Oliver? Mary Oliver?</code></pre>
 ## Implementation Concepts
 
 Now that we've got an API in mind, let's start working on an
-implementation. There are two main procedures to get our head around.
+implementation. There are a few things to think about.
 
 ### Automatic Dependencies
 
@@ -418,6 +418,12 @@ $[contentsOf ./depgraph-final.svg]
 If so, the next time `A1` changes, `C7` will not be recalculated because
 it no longer transitively depends on the value of `A1`.
 
+### Errors
+
+In the case where a `Calc`'s function throws an error, we want to treat
+that `Error` as if it were the result of the function. That is, after
+`badCalc` throws an error, `badCalc.peek()` should return that error.
+
 -----
 
 ## And Now, Some Code
@@ -486,16 +492,19 @@ class Reactor {
     }
   }
 
-  // Executes `fn` and records its inputs.
+  // Executes `fn()` and records its inputs.
+  // Returns the result, or any thrown error.
   track(fn) {
     const oldInputs = this._inputs
-    const oldRunning = Reactor.running
     this._inputs = new Set()
-    Reactor.running = this
+    const oldActive = Reactor.active
+    Reactor.active = this
     try {
       return fn()
+    } catch(err) {
+      return err
     } finally {
-      Reactor.running = oldRunning
+      Reactor.active = oldActive
       for (const i of oldInputs.difference(this._inputs)) {
         i._outputs.delete(this)
       }
@@ -503,6 +512,12 @@ class Reactor {
   }
 }
 ```
+
+> **NOTE**
+>
+> As of $[@ $meta date], we'll need to include
+> a shim[^set-difference-shim] for `Set.prototype.difference` for Firefox.
+
 
 ### The API
 
@@ -616,7 +631,7 @@ setTimeout(() => { logger.dispose() }, 10_000)
 ```
 
 
-### Cycle Detection
+### Cycles
 
 A `Calc` could end up depdending on itself, forming
 a [cycle](https://en.wikipedia.org/wiki/Cycle_(graph_theory)) in the
@@ -633,33 +648,93 @@ cycle[1] = Calc(() => cycle[0]() + cycle[1]?.())
 cycle[0].set('!')
 ```
 
-In this example, the `Calc` *directly* depends on itself. We can detect
-this easily. Let's add a check:
+#### Detecting Cycles
+
+In the above example, the `Calc` *directly* depends on itself. This case
+is easy to detect: the `Calc` will be active when it tries to observe
+itself.
+
+However a `Calc` directly depending on itself is a bit contrived, and
+unlikely in real-world cases. It's much more likely that a cycle would
+arise when a `Calc` *indirectly* depends on itself, eg:
+
+<div class="frame75 pin-to-above">
+$[contentsOf ./cycle-step1.svg]
+</div>
+
+In this case, at the point when the cycle is established, one of the
+`Calc`s will try to observe a `Calc` which is stale.
+
+#### Handling Cycles
+
+How exactly we should handle a cycle is an open question, but there are
+a few things to consider:
+
+- We want to stay "glitch-free", so a cycle shouldn't result in stale
+  data.
+- If some `Atom` changes that breaks the cycle (such as the spreadsheet
+  cell formula changing), we want the `Calc`s that were previously
+  caught in the cycle to recalculate, so we need to be sure that the
+  dependency graph stays intact when a cycle is established.
+
+We know we can detect a cycle at the time a `Calc` is observed, so the
+approach we'll take is to throw an error in the `observe()` method,
+*after* the dependencies are set up:
+
+```javascript
+observe() {
+  let active = Reactor.active
+  if (active) {
+    this._outputs.add(active)
+    active._inputs.add(this)
+    // ↓↓ NEW CODE ↓↓
+    if ((Reactor.active == this) || (this._staleInputs > 0)) {
+      throw Error('Cycle detected')
+    }
+    // ↑↑ NEW CODE ↑↑
+  }
+  return this.latest
+}
+```
+
+There are two other things to note:
+
+1. `C1`'s stale notification will end up back at itself: 
+   **`C1`**&#x200a;→&#x200a;`C3`&#x200a;→&#x200a;`C2`&#x200a;→&#x200a;**`C1`**
+2. `C1`'s fresh notification will end up back at itself:
+   **`C1`**&#x200a;→&#x200a;`C3`&#x200a;→&#x200a;`C2`&#x200a;→&#x200a;**`C1`**
+
+Both of these cases will cause bugs if not handled, so let's handle
+them:
 
 ```javascript
 class Reactor {
   // ...
-  observe() {
-    if (Reactor.active == this) {
-      throw Error('Cycle detected')
+  _becomingStale = false  // ← so we can detect a stale() cycle
+  // ...
+  stale() {
+    if (this._becomingStale) { return } // ← avoid modifying state
+    if (++this._staleInputs == 1) {
+      this._becomingStale = true  // ← set detector
+      for (const o of this._outputs) { o.stale() }
+      this._becomingStale = false // ← unset detector
     }
   }
+  // ...
+  fresh(changed = true) {
+    if (this._staleInputs == 0) { return } // ← avoid modifying state
+    // ...
+  }
+  // ...
 }
 ```
 
-A `Calc` directly depending on itself is a bit contrived, and fairly
-unlikely in real-world cases. It's much more likely that a cycle would
-arise when a `Calc` *indirectly* depends on itself, eg.
-`A`&#x200a;→&#x200a;`B`&#x200a;→&#x200a;`C`&#x200a;→&#x200a;`D`&#x200a;→&#x200a;`A`.
+Now when a cycle happens, the `latest` value of all `Reactor`s in the
+cycle will be `Error('Cycle detected')`, and if we later break the cycle
+(by ie. changing a spreadsheet cell's formula), all the `Reactor`s which
+previously made up the cycle will correctly
+recalculate.[^cycle-hand-wave]
 
-The check for this case is a bit less obvious. Remember back to [the
-algorithm](#the-algorithm): a `Calc` only recalculates once all its
-dependencies are fresh. At least, this is the case in an acyclic
-graph. However, let's look at an indirect cycle:
-
-<div class="frame75 pin-to-above">
-  $[contentsOf ./cycle-step1.svg]
-</div>
 
 -----
 
@@ -723,35 +798,63 @@ changed value[^identity-equality].
 
 -----
 
-## Conveniences
+## Dev Tooling
 
-A pattern that will pop up often is transforming an `Atom`'s value:
+When debugging the dataflow graph, we'll frequently find ourself
+wondering "which `Reactor` am I looking at?", so let's add a way to
+label them so we can tell them apart in the debugger.
+
+In lieu of a more comprehensive [custom](https://devtoolstips.org/tips/en/custom-object-formatters/)
+[formatter](https://firefox-source-docs.mozilla.org/devtools-user/custom_formatters/index.html),
+it will suffice to just be able to see the label from the default
+devtools object summary without having to click the object to expand it.
+
+Chrome, Safari, and Firefox summarize an instance of a class by listing
+the instance variables in order of definition, so let's add an instance
+variable at the top of the `Reactor` definition:
 
 ```javascript
-let myAtom = Atom(5)
-// ...
-myAtom.set(myAtom.peek() * 2)
-```
+class Reactor {
+  static active = null  // ← not an instance variable
 
-Let's make this a bit easier by adding a method to `Atom`:
+  _label = undefined  // ← add this before other variables
 
-```javascript
-function Atom(value) {
   // ...
-  atom.alter = (fn) => atom.set(fn(atom.peek()))
-  return atom
 }
 ```
 
-Now we can, for example:
+Now the label will show in the object summary, like this:
+
+<img class=nostretch src="/blog/reactive-ui-part-1/screenshot-devtools-label.png">
+
+And sometimes when doing more complex debugging, we'll need access to
+the `Reactor` that powers a given `Atom` or `Calc`.
+
+Let's modify our API primitives like so:
 
 ```javascript
-let myAtom = Atom(10)
-myAtom.alter(x => x * 2)  // value is now 20
+export func Atom(value) {
+  // ...
+  atom.label = (lbl) => ((r._label = lbl), atom)
+  atom.\$r = r
+  return atom
+}
+
+export func Calc(fn) {
+  // ...
+  calc.label = (lbl) => ((r._label = lbl), calc)
+  calc.\$r = r
+  return calc
+}
 ```
 
-This is silly in such a short example, but it ends up being used a lot
-in real-world applications.
+Now we can label a primitive at the time of creation:
+
+```javascript
+const foo = Atom(123).label('foo')
+```
+
+and access its `Reactor` by doing `foo.\$r`
 
 -----
 
@@ -777,10 +880,16 @@ href="https://github.com/jrpat/urx.js">https://github.com/jrpat/urx.js</a></b>
 
 ### That's Really It
 
-OK, that's all for this installment. We've got a usable, glitch-free,
-performant reactive dataflow library. We can use it to build real apps,
-like the [spreadsheet demo](/blog/reactive-ui-part-1/sheet.html) from
-the beginning of the article.
+Phew, that was a lot to read, but [the full
+implementation](https://github.com/jrpat/urx.js/blob/main/urx-part1.js)
+is actually pretty simple. In about 100 lines of easy-to-read code, we
+have an ergonomic, glitch-free, performant reactive dataflow library
+that robustly handles cycles, and has affordances for debugging! And you
+know how it all works, from soup to nuts.
+
+We can already use it to build real apps like the [spreadsheet
+demo](/blog/reactive-ui-part-1/sheet.html) from the beginning of the
+article.
 
 But as you build with it, you'll quickly realize that it still leaves
 a lot to be desired: it's not easy to combine `Atom`s into nested
@@ -877,7 +986,15 @@ Thanks for reading! See you next time.
 [^identity-equality]: We use `===` equality, but it might make sense
     to use
     [same-value-zero](https://developer.mozilla.org/en-US/docs/Web/JavaScript/Equality_comparisons_and_sameness#same-value-zero_equality)
-    equality like many Javascript builtins (such as `Map` and `Set`) do.
+    equality like many Javascript builtins do. Or perhaps we should make
+    it configurable per `Reactor`.
+
+[^cycle-hand-wave]: I know that's a bit of a hand-wavy explanation, but
+    this post is long enough already. Cycle detection in a reactive
+    dataflow graph is a complex topic, which perhaps I'll revisit with
+    a more thorough treatment at some point in the future.
+
+[^set-difference-shim]: It's [trivial](https://github.com/jrpat/urx.js/blob/0983095aacd1618c2f190fc1d37c77c5933023b0/urx-part1.js#L121-L131).
 
 [tarpit]: https://curtclifton.net/papers/MoseleyMarks06a.pdf
 [reactjs]: https://react.dev

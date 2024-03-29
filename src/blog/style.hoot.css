@@ -171,6 +171,10 @@ $Small {
   }
 }
 
+article img.nostretch {
+  width: auto;
+}
+
 article .pin-to-above {
   margin-top: -1rem;
   margin-bottom: 1rem;

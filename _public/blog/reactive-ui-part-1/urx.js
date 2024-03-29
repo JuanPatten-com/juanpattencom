@@ -49,7 +49,6 @@ export class Reactor {
   _staleInputs = 0
   _inputChanged = false
   _becomingStale = false
-  _runningEffect = false
 
   latest = undefined
   effect = undefined
@@ -60,53 +59,49 @@ export class Reactor {
       this._outputs.add(active)
       active._inputs.add(this)
       if ((active == this) || (this._staleInputs > 0)) {
-        this._cycleDetected()
+        throw Error(`Cycle detected in ${active._label ?? '?'}`)
       }
     }
     return this.latest
   }
 
   stale() {
-    if (this._becomingStale) { return /* cycle detected later */ }
+    if (this._becomingStale) { return /* cycle */ }
     if (++this._staleInputs == 1) {
+      this._becomingStale = true
       for (const o of this._outputs) { o.stale() }
+      this._becomingStale = false
     }
   }
 
   fresh(changed = true) {
-    if (this._runningEffect) { return /* cycle detected later */ }
+    if (this._staleInputs == 0) { return /* cycle */ }
     if (changed) { this._inputChanged = true }
-    --this._staleInputs
-    if (this._staleInputs == 0) {
+    if (--this._staleInputs == 0) {
       if (this._inputChanged && (this.effect != null)) {
         let oldValue = this.latest
-        this._runningEffect = true
         this.effect()
-        this._runningEffect = false
         changed = (this.latest !== oldValue)
       }
       this._inputChanged = false
       for (const o of this._outputs) { o.fresh(changed) }
-    } else if (this._staleInputs < 0) {
-      this._staleInputs = 0
     }
   }
 
   track(fn) {
     const oldInputs = this._inputs
-    const oldActive = Reactor.active
     this._inputs = new Set()
+    const oldActive = Reactor.active
     Reactor.active = this
     try {
-      let result = fn()
+      return fn()
+    } catch(err) {
+      return err
+    } finally {
+      Reactor.active = oldActive
       for (const i of oldInputs.difference(this._inputs)) {
         i._outputs.delete(this)
       }
-      return result
-    } catch (err) {
-      this._inputs = oldInputs
-    } finally {
-      Reactor.active = oldActive
     }
   }
 
@@ -116,19 +111,23 @@ export class Reactor {
     this._inputs.clear()
     this._outputs.clear()
   }
-
-  _cycleDetected() {
-    this._staleInputs = 0
-    this._inputChanged = false
-    this._runningEffect = false
-    this._becomingStale = false
-    throw Error(`Cycle detected in ${Reactor.active._label ?? '?'}`)
-  }
 }
 
 
 
+////////////////////////////////////////////////////////////////////////
+// Shims
 
-
+if (Set.prototype.difference == null) {
+  Set.prototype.difference = function(other) {
+    const diff = new Set()
+    if (this.size > other.size) {
+      for (let item of other) if (!this.has(item)) diff.add(item);
+    } else {
+      for (let item of this) if (!other.has(item)) diff.add(item);
+    }
+    return diff
+  }
+}
 
 

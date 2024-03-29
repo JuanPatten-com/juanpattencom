@@ -19,6 +19,7 @@ window.initSheet = function() {
   // Cell Evaluation
 
   let env = {eval, Math}
+  window.env = env
   for (let k of Object.getOwnPropertyNames(Math)) { env[k] = Math[k] }
   let evalEnv = new Proxy(env, {
     has(c, key) { return c[key] != null },
@@ -84,7 +85,7 @@ window.initSheet = function() {
       cell.input = input
       cell.title = `${index}`
       cell.dataset.index = `${index}`
-      cell.tabIndex = (r * cols) + c
+      cell.tabIndex = (r * cols.peek()) + c
       cell.edit = () => {
         cell.classList.add('editing')
         input.focus()
@@ -121,6 +122,8 @@ window.initSheet = function() {
         else if (e.key == 'Tab') {
           e.preventDefault()
           cell.finishEditing()
+          let nextTabIndex = (cell.tabIndex + 1) % (rows.peek() * cols.peek())
+          document.querySelector(`[tabindex="${nextTabIndex}"]`)?.edit?.()
         }
       })
       input.addEventListener('blur', e => {
