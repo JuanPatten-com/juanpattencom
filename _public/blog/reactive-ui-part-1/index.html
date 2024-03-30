@@ -2811,23 +2811,23 @@ the <code>fresh</code> notification, and add a bit of additional logic:</p>
 <pre><code class="language-javascript">class Reactor {
   &#47;&#47; ...
 
-  &#47;&#47; Add a private property
-  #inputChanged = false
+  &#47;&#47; Add an instance variable
+  _inputChanged = false
 
   &#47;&#47; ...
 
   &#47;&#47; Add a parameter to fresh(), and a bit of additional logic
   &#47;&#47; to avoid running the effect if no inputs have changed.
   fresh(changed = true) {
-    if (changed) { this.#inputChanged = true }
-    if (--this.#staleInputs == 0) {
-      if (this.#inputChanged &#38;&#38; (this.effect != null)) {
-        this.#inputChanged = false &#47;&#47; reset for next time
+    if (changed) { this._inputChanged = true }
+    if (--this._staleInputs == 0) {
+      if (this._inputChanged &#38;&#38; (this.effect != null)) {
+        this._inputChanged = false &#47;&#47; reset for next time
         let oldValue = this.latest
         this.effect()
         changed = (this.latest !== oldValue)
       }
-      for (const o of this.#outputs) { o.fresh(changed) }
+      for (const o of this._outputs) { o.fresh(changed) }
     }
   }
 }
